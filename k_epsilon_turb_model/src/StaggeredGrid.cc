@@ -13,6 +13,9 @@ u_(configuration.getParameter<int>("imax")+1,configuration.getParameter<int>("jm
 f_(configuration.getParameter<int>("imax")+1,configuration.getParameter<int>("jmax")+2),
 v_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+1),
 g_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+1),
+k_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+e_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+nut_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 Fluid(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 name_(configuration.getStringParameterBoundary("name"))
 {
@@ -31,6 +34,9 @@ name_(configuration.getStringParameterBoundary("name"))
 	rhs_.fill(0.0);	
 	f_.fill(0.0);	
 	g_.fill(0.0);
+        k_.fill(0.0);
+        e_.fill(0.0);
+
 	Fluid.fill(10);
 	
 	if (name_ == "backstep"){
@@ -55,11 +61,15 @@ u_(xSize+1,ySize+2),
 f_(xSize+1,ySize+2),
 v_(xSize+2,ySize+1),
 g_(xSize+2,ySize+1),
+k_(xSize+2,ySize+2),
+e_(xSize+2,ySize+2),
+nut_(xSize+2,ySize+2),
 Fluid(xSize+2,ySize+2),dx_{dx},dy_{dy}{
 Fluid.fill(100);
    p_.fill(1.0);
    u_.fill(1.0);
    v_.fill(1.0);
+
 }
 
 
@@ -89,14 +99,16 @@ void StaggeredGrid::createCircle(real x, real y, real r)
 
 void StaggeredGrid::printfluid(){Fluid.print();}
 
-StaggeredGrid ::StaggeredGrid(GrayScaleImage image): //, real dx, real dy):
+/*StaggeredGrid ::StaggeredGrid(GrayScaleImage image):// real dx, real dy):
 p_(image.width()+2,image.height()+2), 
 rhs_(image.width()+2,image.height()+2),
 u_(image.width()+1,image.height()+2),
 f_(image.width()+1,image.height()+2),
 v_(image.width()+2,image.height()+1),
 g_(image.width()+2,image.height()+1),
-Fluid(image.width()+2,image.height()+2) //, dx_(dx), dy_(dy)
+k_(image.width()+2,image.height()+2),
+e_(image.width()+1,image.height()+2),
+Fluid(image.width()+2,image.height()+2),// dx_(dx), dy_(dy)
 {
  PROGRESS("Reading Image File");
 for (int i=1; i<Fluid.getSize(0); i++)
@@ -110,4 +122,4 @@ for (int i=1; i<Fluid.getSize(0); i++)
     //p_.fill(1.0);
    //u_.fill(1.0);
    //v_.fill(1.0);
-}
+}*/

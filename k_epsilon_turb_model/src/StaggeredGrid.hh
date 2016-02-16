@@ -44,7 +44,11 @@ public:
     Array<real> & v()  { return v_;  } 
     Array<real> & f()  { return f_;  }
     Array<real> & g()  { return g_;  }
-    //Array<unsigned char> & Fluid() {return Fluid;}	
+    Array<real> & k()  { return k_;  }
+    Array<real> & e()  { return e_;  }
+    Array<real> & nut()  { return nut_;  }
+
+    //Array<unsigned char> & Fluid() {return Fluid;}
 
     const Array<real> & p()   const { return p_;   }
     const Array<real> & rhs() const { return rhs_; }
@@ -52,6 +56,10 @@ public:
     const Array<real> & v() const { return v_; }
     const Array<real> & f() const { return f_; }
     const Array<real> & g() const { return g_; }
+    const Array<real> & k() const { return k_; }
+    const Array<real> & e() const { return e_; }
+    const Array<real> & nut() const { return nut_; }
+
     //const Array<unsigned char> & Fluid() const {return Fluid;}
 
    real dx() const { return dx_; }
@@ -63,13 +71,10 @@ public:
    inline real& p(const int x, const int y, Direction dir);
    inline real& f(const int x, const int y, Direction dir);
    inline real& g(const int x, const int y, Direction dir);
+   inline real& k(const int x, const int y, Direction dir);
+   inline real& e(const int x, const int y, Direction dir);
+   inline real& nut(const int x, const int y, Direction dir);
 
-   //Center access
-   /*inline real& u(const int x, const int y);
-   inline real& v(const int x, const int y);
-   inline real& p(const int x, const int y);
-   inline real& f(const int x, const int y);
-   inline real& g(const int x, const int y);*/
 
    inline bool isFluid(const int x,const int y){return Fluid(x,y);}
    inline int getNumFluid();
@@ -90,6 +95,9 @@ protected:
    Array<real> f_;
    Array<real> v_;
    Array<real> g_;
+   Array<real> k_;
+   Array<real> e_;
+   Array<real> nut_;
   Array<unsigned char> Fluid;
   
    int imax_;
@@ -183,7 +191,41 @@ inline real& StaggeredGrid::v(const int x, const int y, Direction dir){
 
 }
 
+inline real& StaggeredGrid::k(const int x, const int y, Direction dir){
+    switch (dir) {
+      case NORTH:
+        if(Fluid(x,y+1)) return k_(x,y+1); else return k_(x,y+1)= 0.0;
 
+      case SOUTH:
+        if(Fluid(x,y-1)) return k_(x,y-1); else return k_(x,y-1)=0.0;
+
+      case WEST:
+        if (Fluid(x-1,y)) return k_(x-1,y); else return k_(x-1,y)=0.0;
+
+      case EAST:
+        if (Fluid(x+1,y)) return k_(x+1,y); else return k_(x+1,y)=0.0;
+
+      default : return k_(x,y); }
+
+}
+
+inline real& StaggeredGrid::e(const int x, const int y, Direction dir){
+    switch (dir) {
+      case NORTH:
+        if(Fluid(x,y+1)) return e_(x,y+1); else return e_(x,y);
+
+      case SOUTH:
+        if(Fluid(x,y-1)) return e_(x,y-1); else return e_(x,y);
+
+      case WEST:
+        if (Fluid(x-1,y)) return e_(x-1,y); else return e_(x,y);
+
+      case EAST:
+        if (Fluid(x+1,y)) return e_(x+1,y); else return e_(x,y);
+
+      default : return e_(x,y); }
+
+}
 
 inline real& StaggeredGrid::f(const int x, const int y, Direction dir){
   switch (dir) {
@@ -214,29 +256,6 @@ inline real& StaggeredGrid::g(const int x, const int y, Direction dir){
     default : return g_(x,y);}
 }
 
-/*inline real& StaggeredGrid::u(const int x, const int y){
-  
-	//return u_(x,y);
-    if(!Fluid(x+1,y)) {return u_(x,y)=0.0;} else {return u_(x,y);}
-}
 
-inline real& StaggeredGrid::v(const int x, const int y){
-     // return v_(x,y);
-    if(!Fluid(x,y+1)){return v_(x,y)= 0.0;} else {return v_(x,y);}
-}
-
-inline real& StaggeredGrid::f(const int x, const int y){
-
-        //return (!Fluid(x+1,y)) ? u_(x,y) : f_(x,y);
-	if (!Fluid(x+1,y))return u_(x,y);
-	else return f_(x,y);
-}
-
-inline real& StaggeredGrid::g(const int x, const int y){
-
-        //return (!Fluid(x,y+1)) ? v_(x,y) : g_(x,y);
-      if (!Fluid(x,y+1)) return v_(x,y); else return g_(x,y); 
-
-}*/
 #endif //STAGGERED_GRID_HH
 
