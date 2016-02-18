@@ -57,6 +57,11 @@ FluidSimulator::FluidSimulator( const FileReader & conf ):grid_(conf),solver_(co
 	  boundary_condition_W_ == "periodic" ; 
 	else if (boundary_condition_W_ == "periodic")
 	  boundary_condition_E_ == "periodic";
+
+         c_nu = 0.09;
+         c_eps = 0.07; // Turbulence parameters
+         c_1 = 0.126;
+         c_2 = 1.92;
 }
 
 
@@ -202,6 +207,103 @@ void FluidSimulator::composeRHS(){
 
 } // End compose RHS
 
+real FluidSimulator::f_nu(int i,int j){
+
+    real delta = grid_.dy();
+
+    real R_delta,R_t,f_nu;
+
+    R_delta = (std::sqrt(grid_.k(i,j,CENTER)) * delta )/nu ;
+
+    if(grid_.e(i,j,CENTER)!=0)
+        R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
+    else
+        R_t = 0;
+
+    if(R_t!=0)
+        f_nu = (1 - exp(-0.0165 * R_delta)) * (1 - exp(-0.0165 * R_delta)) * (1 + (20.5/R_t));
+    else
+        f_nu = 0;
+
+    return f_nu;
+}
+
+ real FluidSimulator::f_1(int i,int j){
+
+     real delta = grid_.dy();
+
+     real R_delta,R_t,f_nu,f_1;
+
+     R_delta = (std::sqrt(grid_.k(i,j,CENTER)) * delta )/nu ;
+
+
+     if(grid_.e(i,j,CENTER)!=0)
+         R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
+     else
+         R_t = 0;
+
+     if(R_t!=0)
+         f_nu = (1 - exp(-0.0165 * R_delta)) * (1 - exp(-0.0165 * R_delta)) * (1 + (20.5/R_t));
+     else f_nu = 0;
+
+     if(f_nu!=0)
+         f_1 = 1 + pow ((0.05/f_nu),3);
+     else
+         f_1 = 0;
+
+     return f_1;
+ }
+
+ real FluidSimulator::f_2(int i,int j){
+
+     real R_t,f_2;
+
+     if(grid_.e(i,j,CENTER)!=0)
+         R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
+     else
+         R_t = 0;
+
+     f_2 = 1 - exp(-(R_t*R_t));
+
+     return f_2;
+ }
+
+ void FluidSimulator::compute_nu_t(){
+
+     Array<real> nu_t = grid_.nut();
+     int imax = grid_.p().getSize(0)-2 ;
+     int jmax = grid_.p().getSize(1)-2 ;
+
+     for (int i = 1 ; i <= imax ; ++i)
+     for( int j = 1 ; j <= jmax ; ++j){
+         if(grid_.e(i,j,CENTER)!=0)
+            nu_t(i,j) = (c_nu * f_nu(i,j) * grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER)) /grid_.e(i,j,CENTER);
+     else
+           nu_t(i,j) = 0;}
+ }
+
+
+ real FluidSimulator::nu_t(int i,int j){
+
+    Array<real> nu_t = grid_.nut();
+
+    return nu_t(i,j);
+
+ }
+
+ real FluidSimulator::nu_t_str(int i,int j){
+
+     Array<real> nu_t = grid_.nut();
+     return nu + nu_t(i,j);
+
+ }
+
+void FluidSimulator::computeKE(){
+
+
+
+
+}
 void FluidSimulator::updateVelocities(){
 
 	 real idx = 1/real(grid_.dx()); 

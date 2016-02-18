@@ -29,8 +29,16 @@ class FluidSimulator
       real getP(real x , real y);
 
   private:
+      void computeKE();
       void computeFG();
       void composeRHS();
+      void compute_nu_t();
+
+      real f_nu(int i,int j);
+      real f_1(int i,int j);
+      real f_2(int i,int j);
+      real nu_t(int i,int j);
+      real nu_t_str(int i,int j);
       void updateVelocities();
       void determineNextDT();
       void refreshBoundaries(); 
@@ -43,9 +51,11 @@ class FluidSimulator
       SORSolver solver_;
       real gx_;
       real gy_;
+      real nu;
       real Re_;
       real gamma_;
       real dt_;
+      real c_nu,c_eps,c_1,c_2;
       size_t timesteps_;
       real tau_ ;
       size_t nf_;
