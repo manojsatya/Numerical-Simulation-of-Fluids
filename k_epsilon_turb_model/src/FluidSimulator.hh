@@ -30,6 +30,7 @@ class FluidSimulator
 
   private:
       void computeKE();
+      void computeFG_KE();
       void computeFG();
       void composeRHS();
       void compute_nu_t();
