@@ -8,6 +8,8 @@ FluidSimulator::FluidSimulator( const FileReader & conf ):grid_(conf),solver_(co
 	gx_{conf.getParameter<real>("GX")},
 	gy_{conf.getParameter<real>("GY")},
 	Re_{conf.getParameter<real>("Re")},
+        nu{conf.getParameter<real>("nu")},
+        turbulenceMode{conf.getParameter<int>("Turbulence")},
 	gamma_{conf.getParameter<real>("gamma")},
 	dt_{conf.getParameter<real>("dt")},
 	timesteps_{conf.getParameter<size_t>("timesteps")},
@@ -58,6 +60,9 @@ FluidSimulator::FluidSimulator( const FileReader & conf ):grid_(conf),solver_(co
 	else if (boundary_condition_W_ == "periodic")
 	  boundary_condition_E_ == "periodic";
 
+         //if(conf.checkParameter("Turbulence")) {turbulenceMode = 0;PROGRESS(" Turbulence Mode set to Laminar");}
+         //if(conf.checkParameter("nu")){nu = 0;}
+
          c_nu = 0.09;
          c_eps = 0.07; // Turbulence parameters
          c_1 = 0.126;
@@ -97,6 +102,8 @@ void FluidSimulator::computeFG(){
 	
 	for (int i = 1 ; i < imax ; ++i)
 		for( int j = 1 ; j <= jmax ; ++j) {
+
+                    if(grid_.isFluid(i,j) && grid_.isFluid(i+1,j)){
 	 
 	//u2_dx(i,j) = 0.25 * idx * (((grid_.u()(i,j) + grid_.u()(i+1,j)) * (grid_.u()(i,j) + grid_.u()(i+1,j))) - ((grid_.u()(i-1,j) + grid_.u()(i,j)) * (grid_.u()(i-1,j) + grid_.u()(i,j))) + 
 	//		gamma_ * (std::fabs ((grid_.u()(i,j) + grid_.u()(i+1,j))) * (grid_.u()(i,j) - grid_.u()(i+1,j)) - std::fabs((grid_.u()(i-1,j) + grid_.u()(i,j))) * (grid_.u()(i-1,j) - grid_.u()(i,j)))) ;
@@ -122,7 +129,7 @@ void FluidSimulator::computeFG(){
 	
 	//p_dx(i,j) = idx * (grid_.p()(i+1,j) - grid_.p()(i,j));
 	
-	
+                        }
 
 		} // End for loop u values
 
@@ -131,7 +138,7 @@ void FluidSimulator::computeFG(){
 	for (int i = 1 ; i <= imax ; ++i)
 		for( int j = 1 ; j < jmax ; ++j) {
 	
-	 
+         if(grid_.isFluid(i,j) && grid_.isFluid(i,j+1)) {
 	//uv_dx(i,j) = 0.25 * idx * ((grid_.u()(i,j) + grid_.u()(i,j+1)) * (grid_.v()(i,j) + grid_.v()(i+1,j)) - (grid_.u()(i-1,j) + grid_.u()(i-1,j+1)) * (grid_.v()(i-1,j) + grid_.v()(i,j)) 	+ gamma_ * (std::fabs((grid_.u()(i,j) + grid_.u()(i,j+1))) * (grid_.v()(i,j) - grid_.v()(i+1,j)) - 		std::fabs((grid_.u()(i-1,j) + grid_.u()(i-1,j+1))) * (grid_.v()(i-1,j) + grid_.v()(i,j)))) ; 
 
 		  
@@ -151,8 +158,8 @@ void FluidSimulator::computeFG(){
 //PROGRESS("v2_x2"); 
     v2_y2(i,j) = idy2 * (grid_.v(i,j,NORTH) - 2 * grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH)) ;
 //	PROGRESS("v2_y2"); 
-	//p_dy(i,j) = idy * (grid_.p()(i,j+1) - grid_.p()(i,j)) ;		
-
+        //p_dy(i,j) = idy * (grid_.p()(i,j+1) - grid_.p()(i,j)) ;
+                        }
 		} //end for loop v values
 
 	//PROGRESS("*********in f************"); 
@@ -224,8 +231,10 @@ void FluidSimulator::computeFG_KE(){
         for (int i = 1 ; i < imax ; ++i)
                 for( int j = 1 ; j <= jmax ; ++j) {
 
-      first_f(i,j) = idx2* (nu_t_str(i+1,j)*(grid_.u(i,j,EAST) - grid_.u(i,j,CENTER)) - nu_t_str(i,j) *(grid_.u(i,j,CENTER) - grid_.u()(i,j,WEST)));
+                    if(grid_.isFluid(i,j) && grid_.isFluid(i+1,j)){
 
+      first_f(i,j) = idx2* (nu_t_str(i+1,j)*(grid_.u(i,j,EAST) - grid_.u(i,j,CENTER)) - nu_t_str(i,j) *(grid_.u(i,j,CENTER) - grid_.u(i,j,WEST)));
+//std::cout << " Inside Compute FG_KE....first_f " << std::endl;
      real nu_t_str_NE = 0.25 * (nu_t_str(i,j) + nu_t_str(i+1,j) + nu_t_str(i+1,j+1)+ nu_t_str(i,j+1)) ;
      real nu_t_str_SE = 0.25 * (nu_t_str(i,j) + nu_t_str(i+1,j) + nu_t_str(i+1,j-1) + nu_t_str(i,j-1));
 
@@ -235,19 +244,19 @@ void FluidSimulator::computeFG_KE(){
 
      third_f(i,j) = ((2/3) * idx) * (grid_.k(i,j,EAST) - grid_.k(i,j,CENTER));
 
-    u2_dx(i,j) = 0.25 * idx * (((grid_.u(i,j,CENTER) + grid_.u(i,j,EAST))	*(grid_.u(i,j,CENTER)+ grid_.u(i,j,EAST))-(grid_.u(i,j,WEST)+ grid_.u(i,j,CENTER))*(grid_.u(i,j,WEST)+ grid_.u(i,j,CENTER)))
+    u2_dx(i,j) = (0.25 * idx) * (((grid_.u(i,j,CENTER) + grid_.u(i,j,EAST))	*(grid_.u(i,j,CENTER)+ grid_.u(i,j,EAST))-(grid_.u(i,j,WEST)+ grid_.u(i,j,CENTER))*(grid_.u(i,j,WEST)+ grid_.u(i,j,CENTER)))
             + gamma_*(std::fabs(grid_.u(i,j,CENTER)+ grid_.u(i,j,EAST))*(grid_.u(i,j,CENTER)- grid_.u(i,j,EAST))- std::fabs(grid_.u(i,j,WEST)+ grid_.u(i,j,CENTER))*(grid_.u(i,j,WEST)- grid_.u(i,j,CENTER))));
 
 
 
-    uv_dy(i,j) = 0.25 * idy * ( (grid_.v(i,j,CENTER) + grid_.v(i,j,EAST)) * (grid_.u(i,j,CENTER) + grid_.u(i,j,NORTH)) - (grid_.v(i,j,SOUTH) + grid_.v(i+1,j,SOUTH)) * (grid_.u(i,j,SOUTH) + grid_.u(i,j,CENTER))
+    uv_dy(i,j) = (0.25 * idy) * ( (grid_.v(i,j,CENTER) + grid_.v(i,j,EAST)) * (grid_.u(i,j,CENTER) + grid_.u(i,j,NORTH)) - (grid_.v(i,j,SOUTH) + grid_.v(i+1,j,SOUTH)) * (grid_.u(i,j,SOUTH) + grid_.u(i,j,CENTER))
               + gamma_ * ( std::fabs(grid_.v(i,j,CENTER) + grid_.v(i,j,EAST)) * (grid_.u(i,j,CENTER) - grid_.u(i,j,NORTH)) - std::fabs(grid_.v(i,j,SOUTH) + grid_.v(i+1,j,SOUTH)) * (grid_.u(i,j,SOUTH) - grid_.u(i,j,CENTER))));
 
     //u2_x2(i,j) = idx2 * (grid_.u(i,j,EAST) - 2 * grid_.u(i,j,CENTER) + grid_.u(i,j,WEST));
 
 
     //u2_y2(i,j) = idy2 * (grid_.u(i,j,NORTH) - 2 * grid_.u(i,j,CENTER) + grid_.u(i,j,SOUTH));
-
+                        }
 
                 } // End for loop u values
 
@@ -255,6 +264,8 @@ void FluidSimulator::computeFG_KE(){
 
         for (int i = 1 ; i <= imax ; ++i)
                 for( int j = 1 ; j < jmax ; ++j) {
+
+                    if(grid_.isFluid(i,j) && grid_.isFluid(i,j+1)){
 
      real nu_t_str_NE = 0.25 * (nu_t_str(i,j) + nu_t_str(i+1,j) + nu_t_str(i+1,j+1)+ nu_t_str(i,j+1)) ;
      real nu_t_str_NW = 0.25 * (nu_t_str(i,j) + nu_t_str(i,j+1) + nu_t_str(i-1,j+1) + nu_t_str(i-1,j)) ;
@@ -268,18 +279,18 @@ void FluidSimulator::computeFG_KE(){
 
      third_g(i,j) = ((2/3) * idx) * (grid_.k(i,j,NORTH) - grid_.k(i,j,CENTER));
 
-     uv_dx(i,j) = 0.25 * idx * ((grid_.u(i,j,CENTER) + grid_.u(i,j,NORTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,EAST)) - (grid_.u(i,j,WEST) + grid_.u(i,j+1,WEST)) * (grid_.v(i,j,WEST) + grid_.v(i,j,CENTER))
+     uv_dx(i,j) = (0.25 * idx) * ((grid_.u(i,j,CENTER) + grid_.u(i,j,NORTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,EAST)) - (grid_.u(i,j,WEST) + grid_.u(i,j+1,WEST)) * (grid_.v(i,j,WEST) + grid_.v(i,j,CENTER))
              + gamma_ * (std::fabs(grid_.u(i,j,CENTER) + grid_.u(i,j,NORTH)) * (grid_.v(i,j,CENTER) - grid_.v(i,j,EAST)) - std::fabs(grid_.u(i,j,WEST) + grid_.u(i,j+1,WEST)) * (grid_.v(i,j,WEST)-grid_.v(i,j,CENTER))));
 
 
-    v2_dy(i,j) = 0.25 * idy * ((grid_.v(i,j,CENTER) + grid_.v(i,j,NORTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,NORTH)) - (grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH))
+    v2_dy(i,j) = (0.25 * idy) * ((grid_.v(i,j,CENTER) + grid_.v(i,j,NORTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,NORTH)) - (grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH)) * (grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH))
             + gamma_ * (std::fabs(grid_.v(i,j,CENTER) + grid_.v(i,j,NORTH)) * (grid_.v(i,j,CENTER) - grid_.v(i,j,NORTH)) - std::fabs(grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH)) * (grid_.v(i,j,SOUTH) - grid_.v(i,j,CENTER))));
 
     //v2_x2(i,j) = idx2 * (grid_.v(i,j,EAST) - 2 * grid_.v(i,j,CENTER) + grid_.v(i,j,WEST)) ;
 
     //v2_y2(i,j) = idy2 * (grid_.v(i,j,NORTH) - 2 * grid_.v(i,j,CENTER) + grid_.v(i,j,SOUTH)) ;
 
-
+                    }
                 } //end for loop v values
 
         //PROGRESS("*********in f************");
@@ -331,15 +342,20 @@ void FluidSimulator::composeRHS(){
 } // End compose RHS
 
 real FluidSimulator::f_nu(int i,int j){
+    //int jmax = grid_.p().getSize(1)-2 ;
 
     real delta = grid_.dy();
+    //real delta = 0.65;
+       //std::cout << "delta =" << delta << std::endl;
 
     real R_delta,R_t,f_nu;
 
     R_delta = (std::sqrt(grid_.k(i,j,CENTER)) * delta )/nu ;
 
-    if(grid_.e(i,j,CENTER)!=0)
+    if(grid_.e(i,j,CENTER)!=0){
         R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
+    //std::cout << "grid_.e(i,j,CENTER) = "<<grid_.k(i,j,CENTER) << std::endl;
+    }
     else
         R_t = 0;
 
@@ -353,26 +369,29 @@ real FluidSimulator::f_nu(int i,int j){
 
  real FluidSimulator::f_1(int i,int j){
 
-     real delta = grid_.dy();
+int jmax = grid_.p().getSize(1)-2 ;
+      real delta = grid_.dy() * jmax;
+
+     //real delta = 0.65;
 
      real R_delta,R_t,f_nu,f_1;
 
      R_delta = (std::sqrt(grid_.k(i,j,CENTER)) * delta )/nu ;
 
 
-     if(grid_.e(i,j,CENTER)!=0)
+     //if(grid_.e(i,j,CENTER)!=0)
          R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
-     else
-         R_t = 0;
+     //else
+       //  R_t = 0;
 
-     if(R_t!=0)
+     //if(R_t!=0)
          f_nu = (1 - exp(-0.0165 * R_delta)) * (1 - exp(-0.0165 * R_delta)) * (1 + (20.5/R_t));
-     else f_nu = 0;
+     //else f_nu = 0;
 
-     if(f_nu!=0)
+     //if(f_nu!=0)
          f_1 = 1 + pow ((0.05/f_nu),3);
-     else
-         f_1 = 0;
+     //else
+       //  f_1 = 0;
 
      return f_1;
  }
@@ -381,10 +400,10 @@ real FluidSimulator::f_nu(int i,int j){
 
      real R_t,f_2;
 
-     if(grid_.e(i,j,CENTER)!=0)
+     //if(grid_.e(i,j,CENTER)!=0)
          R_t = (grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER))/(nu * grid_.e(i,j,CENTER));
-     else
-         R_t = 0;
+     //else
+      //   R_t = 0;
 
      f_2 = 1 - exp(-(R_t*R_t));
 
@@ -393,31 +412,33 @@ real FluidSimulator::f_nu(int i,int j){
 
  void FluidSimulator::compute_nu_t(){
 
-     Array<real> nu_t = grid_.nut();
+     //Array<real> nu_t = grid_.nut();
      int imax = grid_.p().getSize(0)-2 ;
      int jmax = grid_.p().getSize(1)-2 ;
 
      for (int i = 1 ; i <= imax ; ++i)
      for( int j = 1 ; j <= jmax ; ++j){
-         if(grid_.e(i,j,CENTER)!=0)
-            nu_t(i,j) = (c_nu * f_nu(i,j) * grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER)) /grid_.e(i,j,CENTER);
+         if(grid_.e(i,j,CENTER)!=0){
+            grid_.nut()(i,j) = (c_nu * f_nu(i,j) * grid_.k(i,j,CENTER) * grid_.k(i,j,CENTER)) /grid_.e(i,j,CENTER);
+            //std::cout << grid_.nut()(i,j) << std::endl;
+         }
      else
-           nu_t(i,j) = 0;}
+           grid_.nut()(i,j) = 0;}
  }
 
 
  real FluidSimulator::nu_t(int i,int j){
+//std::cout << " Inside Compute FG_KE....first_f " << std::endl;
+    //Array<real> nu_t = grid_.nut();
 
-    Array<real> nu_t = grid_.nut();
-
-    return nu_t(i,j);
+    return grid_.nut()(i,j);
 
  }
 
  real FluidSimulator::nu_t_str(int i,int j){
 
-     Array<real> nu_t = grid_.nut();
-     return nu + nu_t(i,j);
+     //Array<real> nu_t = grid_.nut();
+     return nu + grid_.nut()(i,j);
 
  }
 
@@ -434,27 +455,67 @@ void FluidSimulator::computeKE(){
 
     Array<real> k_new(imax+2,jmax+2);
     Array<real> e_new(imax+2,jmax+2);
+    Array<real> nu_t(imax+2,jmax+2);
+
+
+    for (int i = 1 ; i <=imax ; ++i){ // South
+
+        k_new(i,0) = grid_.k()(i,0);
+        e_new(i,0) = grid_.e()(i,0);
+
+    }
+
+    for (int i = 1 ; i <=imax ; ++i){ // North
+        k_new(i,jmax + 1) = grid_.k()(i,jmax + 1);
+        e_new(i,jmax + 1) = grid_.e()(i,jmax + 1);
+
+    }
+
+    for (int j = 1 ; j <=jmax ; ++j){ //West
+
+        k_new(0,j)= grid_.k()(0,j);
+        e_new(0,j)= grid_.e()(0,j);
+
+    }
+
+    for (int j = 1 ; j <=jmax ; ++j){ // East
+
+        k_new(imax,j) = grid_.k()(imax,j);
+        e_new(imax,j) = grid_.e()(imax,j);
+    }
+
+
 
     for (int i = 1 ; i <= imax ; ++i)
             for( int j = 1 ; j <= jmax ; ++j) {
 
+        //int i = 4; int j = 4;
                 if(grid_.isFluid(i,j)){
 
-                    real nu_t_east = (nu_t(i,j) + nu_t(i+1,j)) * 0.5;
-                    real nu_t_west = (nu_t(i,j) + nu_t(i-1,j)) * 0.5;
-                    real nu_t_north = (nu_t(i,j) + nu_t(i,j+1)) * 0.5;
-                    real nu_t_south = (nu_t(i,j) + nu_t(i,j-1)) * 0.5;
+                    real nu_t_east = (grid_.nut()(i,j) + grid_.nut()(i+1,j)) * 0.5; //std::cout << "nu_t_east =" << nu_t_east << std::endl;
+                    real nu_t_west = (grid_.nut()(i,j) + grid_.nut()(i-1,j)) * 0.5; //std::cout << "nu_t_west =" << nu_t_west << std::endl;
+                    real nu_t_north = (grid_.nut()(i,j) + grid_.nut()(i,j+1)) * 0.5;//std::cout << "nu_t_north =" << nu_t_north << std::endl;
+                    real nu_t_south = (grid_.nut()(i,j) + grid_.nut()(i,j-1)) * 0.5;//std::cout << "nu_t_south =" << nu_t_south << std::endl;
 
                     real first_k = idx2 * (nu_t_east * (grid_.k(i,j,EAST) - grid_.k(i,j,CENTER)) -
                                     nu_t_west * (grid_.k(i,j,CENTER) - grid_.k(i,j,WEST)));
 
+                    //std::cout << "first_k =" << first_k << std::endl;
+
                     real second_k = idy2 * (nu_t_north * (grid_.k(i,j,NORTH) - grid_.k(i,j,CENTER)) -
                                   nu_t_south * (grid_.k(i,j,CENTER) - grid_.k(i,j,SOUTH)));
 
-                    real third_k = (idx * 0.5) * (grid_.u(i,j,CENTER) * (grid_.k(i,j,CENTER)+grid_.k(i,j,EAST)) -
+                    //std::cout << "second_k =" << second_k << std::endl;
+
+                    real third_k = (idx * 0.5)* ((grid_.u(i,j,CENTER) * (grid_.k(i,j,CENTER)+grid_.k(i,j,EAST))) -
+                                    (grid_.u(i,j,WEST) * (grid_.k(i,j,WEST)+grid_.k(i,j,CENTER))) + gamma_ *
+                                    ((std::fabs(grid_.u(i,j,CENTER)) * (grid_.k(i,j,CENTER) - grid_.k(i,j,EAST)))-
+                                    (std::fabs(grid_.u(i,j,WEST)) * (grid_.k(i,j,WEST) - grid_.k(i,j,CENTER)))));
+
+                    /*real third_k = (idx * 0.5) * (grid_.u(i,j,CENTER) * (grid_.k(i,j,CENTER)+grid_.k(i,j,EAST)) -
                                 grid_.u(i,j,WEST) * (grid_.k(i,j,WEST)+grid_.k(i,j,CENTER)) + gamma_ *
                                 (std::fabs(grid_.u(i,j,CENTER)) * (grid_.k(i,j,CENTER) - grid_.k(i,j,EAST)) -
-                                std::fabs(grid_.u(i,j,WEST)) * (grid_.k(i,j,WEST) - grid_.k(i,j,CENTER))));
+                                std::fabs(grid_.u(i,j,WEST)) * (grid_.k(i,j,WEST) - grid_.k(i,j,CENTER))));*/
 
                     real four_k = (idy * 0.5) * (grid_.v(i,j,CENTER) * (grid_.k(i,j,CENTER)+grid_.k(i,j,NORTH)) -
                                 grid_.v(i,j,SOUTH) * (grid_.k(i,j,SOUTH)+grid_.k(i,j,CENTER)) + gamma_ *
@@ -462,19 +523,31 @@ void FluidSimulator::computeKE(){
                                 std::fabs(grid_.v(i,j,SOUTH)) * (grid_.k(i,j,SOUTH) - grid_.k(i,j,CENTER))));
 
                     real du_dx = idx * (grid_.u(i,j,CENTER) - grid_.u(i,j,WEST));
-                    real du_dy = 4 * idy * (grid_.u(i,j,NORTH) + grid_.u(i-1,j,NORTH) - grid_.u(i,j,SOUTH) - grid_.u(i-1,j,SOUTH));
+
+                    real du_dy = (0.25 * idy) * (grid_.u(i,j,NORTH) + grid_.u(i-1,j,NORTH) - grid_.u(i,j,SOUTH) - grid_.u(i-1,j,SOUTH));
+
                     real dv_dy = idy * (grid_.v(i,j,CENTER) - grid_.u(i,j,SOUTH));
-                    real dv_dx = 4 * idx * (grid_.v(i,j,EAST) + grid_.v(i,j-1,EAST) - grid_.v(i,j,WEST) - grid_.v(i-1,j,WEST));
-                    real gradugradut = (4 * du_dx * du_dx) + 2 * ((du_dy + dv_dx)*(du_dy + dv_dx)) + (4 * dv_dy * dv_dy);
+                    // Problem in next line
+                    //std::cout << "i = " << i<< std::endl;
+                    //std::cout << "j = " << j<< std::endl;
+                    real dv_dx = (0.25 * idx) * (grid_.v(i,j,EAST) + grid_.v(i+1,j,SOUTH) - grid_.v(i,j,WEST) - grid_.v(i,j-1,WEST));
+
+
+                    real gradugradut = (4 * du_dx * du_dx) + 2 * std::pow((du_dy + dv_dx),2) + (4 * dv_dy * dv_dy);
 
                     real five_k = 0.5 * nu_t(i,j) * pow(std::fabs(gradugradut),2);
 
-                    k_new(i,j) = grid_.k(i,j,CENTER) + dt_* (first_k + second_k - third_k - four_k + five_k - grid_.e(i,j,CENTER));
+                   //grid_.k()(i,j) = grid_.k(i,j,CENTER) + dt_* (first_k + second_k - third_k - four_k + five_k - grid_.e(i,j,CENTER));
 
-                    real nu_t_f_nu_east = (f_nu(i,j)* nu_t(i,j) + f_nu(i+1,j) * nu_t(i+1,j)) * 0.5;
-                    real nu_t_f_nu_west = (f_nu(i,j)* nu_t(i,j) + f_nu(i-1,j) * nu_t(i-1,j)) * 0.5;
-                    real nu_t_f_nu_north = (f_nu(i,j)* nu_t(i,j) + f_nu(i,j+1) *  nu_t(i,j+1)) * 0.5;
-                    real nu_t_f_nu_south = (f_nu(i,j)* nu_t(i,j) + f_nu(i,j-1) * nu_t(i,j-1)) * 0.5;
+                    k_new(i,j) = grid_.k(i,j,CENTER) + dt_* (first_k + second_k - third_k - four_k + five_k - grid_.e(i,j,CENTER));
+                    if(k_new(i,j)<0){k_new(i,j) = 0.00001;}
+                    //if(grid_.k()(i,j)<0){grid_.k()(i,j) = 0.00001;}
+                    //std::cout << k_new(i,j) << std::endl;
+                    //std::cout << "f_nu =" << f_nu(i,j) << std::endl;
+                    real nu_t_f_nu_east = (f_nu(i,j)* grid_.nut()(i,j) + f_nu(i+1,j) * grid_.nut()(i+1,j)) * 0.5; //std::cout << "nu_t_fnu_east =" << nu_t_f_nu_east << std::endl;
+                    real nu_t_f_nu_west = (f_nu(i,j)* grid_.nut()(i,j) + f_nu(i-1,j) * grid_.nut()(i-1,j)) * 0.5; //std::cout << "nu_t_fnu_east =" << nu_t_f_nu_west << std::endl;
+                    real nu_t_f_nu_north = (f_nu(i,j)* grid_.nut()(i,j) + f_nu(i,j+1) *  grid_.nut()(i,j+1)) * 0.5; //std::cout << "nu_t_fnu_east =" << nu_t_f_nu_north << std::endl;
+                    real nu_t_f_nu_south = (f_nu(i,j)* grid_.nut()(i,j) + f_nu(i,j-1) * grid_.nut()(i,j-1)) * 0.5;//std::cout << "nu_t_fnu_east =" << nu_t_f_nu_south << std::endl;
 
                     real first_e = (c_eps/c_nu) * (idx2 * (nu_t_f_nu_east * (grid_.e(i,j,EAST) - grid_.e(i,j,CENTER)) -
                                     nu_t_f_nu_west * (grid_.e(i,j,CENTER) - grid_.e(i,j,WEST))));
@@ -483,11 +556,11 @@ void FluidSimulator::computeKE(){
                                   nu_t_f_nu_south * (grid_.e(i,j,CENTER) - grid_.e(i,j,SOUTH))));
 
                     real third_e = (idx * 0.5) * (grid_.u(i,j,CENTER) * (grid_.e(i,j,CENTER)+grid_.e(i,j,EAST)) -
-                                grid_.u(i,j,WEST) * (grid_.e(i,j,WEST)+grid_.e(i,j,CENTER)) + gamma_ *
                                 (std::fabs(grid_.u(i,j,CENTER)) * (grid_.e(i,j,CENTER) - grid_.e(i,j,EAST)) -
                                 std::fabs(grid_.u(i,j,WEST)) * (grid_.e(i,j,WEST) - grid_.e(i,j,CENTER))));
 
                     real four_e = (idy * 0.5) * (grid_.v(i,j,CENTER) * (grid_.e(i,j,CENTER)+grid_.e(i,j,NORTH)) -
+                                                 grid_.u(i,j,WEST) * (grid_.e(i,j,WEST)+grid_.e(i,j,CENTER)) + gamma_ *
                                 grid_.v(i,j,SOUTH) * (grid_.e(i,j,SOUTH)+grid_.e(i,j,CENTER)) + gamma_ *
                                 (std::fabs(grid_.v(i,j,CENTER)) * (grid_.e(i,j,CENTER) - grid_.e(i,j,NORTH)) -
                                 std::fabs(grid_.v(i,j,SOUTH)) * (grid_.e(i,j,SOUTH) - grid_.e(i,j,CENTER))));
@@ -496,16 +569,19 @@ void FluidSimulator::computeKE(){
 
                     real six_e = (c_2 * f_2(i,j) * grid_.e(i,j,CENTER) * grid_.e(i,j,CENTER)) / grid_.k(i,j,CENTER);
 
+                    //grid_.e()(i,j) = grid_.e(i,j,CENTER) + dt_ * (first_e + second_e - third_e - four_e + five_e - six_e);
+
                     e_new(i,j) = grid_.e(i,j,CENTER) + dt_ * (first_e + second_e - third_e - four_e + five_e - six_e);
+                    //std::cout << e_new(i,j) << std::endl;
                 }
 
                 else
-                    k_new(i,j) = 0.0; e_new(i,j) = 0.0;
+                {e_new(i,j) = 0.0; k_new(i,j) = 0.0;}
 
             }
 grid_.k() = k_new;
 grid_.e() = e_new;
-
+//std::cout << " Inside Compute KE " << std::endl;
 }
 void FluidSimulator::updateVelocities(){
 
@@ -573,6 +649,20 @@ void FluidSimulator::boundaryCorrection(){
     grid_.u()(0,j) = 0.0 ;  } 
 }
 
+/*void FluidSimulator::boundaryForKE(){
+    int jmax = grid_.p().getSize(1)-2 ;
+    if ( boundary_condition_W_ == "inflow") { // Inlet Turbulent properties
+        real b;
+        b = grid_.dy() * jmax ;
+        for (int j = 1 ; j <=jmax ; ++j){
+
+                    grid_.k()(0,j) = boundary_velocity_W_ * boundary_velocity_W_ * 0.003;
+                    grid_.e()(0,j) =  (c_nu * pow((grid_.k()(0,j)),1.5) )/(0.03 * b);
+            }
+    }
+
+}*/
+
 void FluidSimulator::refreshBoundaries(){
 
 	int imax = grid_.p().getSize(0)-2 ;
@@ -581,7 +671,9 @@ void FluidSimulator::refreshBoundaries(){
 	if ( boundary_condition_S_ == "NOSLIP") {
 		for (int i = 1 ; i <=imax ; ++i){
 			grid_.u()(i,0) = 2 * boundary_velocity_S_ - grid_.u()(i,1);
-			grid_.v()(i,1) = 0.0 ;
+                        grid_.v()(i,1) = 0.0 ;
+                        //grid_.k()(i,1) = 0.0 ;
+                        grid_.e()(i,0) = grid_.e()(i,1);
 		}
 		//PROGRESS("NOSLIP set to South boundary");
 	}
@@ -590,6 +682,8 @@ void FluidSimulator::refreshBoundaries(){
 		for (int i = 1 ; i <=imax ; ++i){
 			grid_.u()(i,jmax + 1) = 2 * boundary_velocity_N_ - grid_.u()(i,jmax);
 			grid_.v()(i,jmax) = 0.0 ;
+                       // grid_.k()(i,jmax) = 0.0 ;
+                        grid_.e()(i,jmax +1 ) = grid_.e()(i,jmax);
 		}
 			//PROGRESS("NOSLIP set to North boundary");
 	}
@@ -598,6 +692,8 @@ void FluidSimulator::refreshBoundaries(){
 		for (int j = 1 ; j <=jmax ; ++j){
 			grid_.v()(0,j) = 2 * boundary_velocity_W_ - grid_.v()(1,j);
 			grid_.u()(0,j) = 0.0 ;
+                        //grid_.k()(0,j) = 0.0 ;
+                        grid_.e()(0,j) = grid_.e()(1,j);
 		}
 		//PROGRESS("NOSLIP set to West boundary");
 	}
@@ -606,6 +702,8 @@ void FluidSimulator::refreshBoundaries(){
 		for (int j = 1 ; j <=jmax ; ++j){
 			grid_.v()(imax + 1,j) = 2 * boundary_velocity_E_ - grid_.v()(imax,j);
 			grid_.u()(imax,j) = 0.0 ;
+                        //grid_.k()(imax,j) = 0.0 ;
+                        grid_.e()(imax+1,j) = grid_.e()(imax,j);
 		}
 		//PROGRESS("NOSLIP set to East boundary");
 	}
@@ -619,9 +717,14 @@ void FluidSimulator::refreshBoundaries(){
 	}
 
 	if ( boundary_condition_W_ == "inflow") {
+            real b;
+
+            b = grid_.dy()* jmax;
 		for (int j = 1 ; j <=jmax ; ++j){
 			grid_.u()(0,j) = boundary_velocity_W_ ;
-			grid_.v()(0,j) =  - grid_.v()(1,j);			
+                        grid_.v()(0,j) =  - grid_.v()(1,j);
+                        grid_.k()(0,j) = std::pow(boundary_velocity_W_,2) * 0.003;
+                        grid_.e()(0,j) = (c_nu / (0.03 * b)) * pow((grid_.k()(0,j)),1.5);
 		}
 		//PROGRESS("Inflow set to West boundary");
 	}
@@ -643,9 +746,15 @@ void FluidSimulator::refreshBoundaries(){
 	}
 
 	if ( boundary_condition_E_ == "outflow") {
+            //real b;
+            //b = grid_.dy() * jmax ;
 		for (int j = 1 ; j <=jmax ; ++j){
 			grid_.u()(imax,j) = grid_.u()(imax - 1,j);
-			grid_.v()(imax + 1,j) = grid_.v()(imax,j);			
+                        grid_.v()(imax + 1,j) = grid_.v()(imax,j);
+                        grid_.e()(imax +1,j) = grid_.e()(imax,j);
+                        grid_.k()(imax +1,j) = grid_.k()(imax,j);
+                        //grid_.k()(imax,j) = boundary_velocity_W_ * boundary_velocity_W_ * 0.003;
+                        //grid_.e()(imax +1,j) =  (c_nu * pow((grid_.k()(0,j)),1.5) )/(0.03 * b);
 		}
 		//PROGRESS("Outflow set to East boundary");
 	}
@@ -702,17 +811,16 @@ void FluidSimulator::refreshBoundaries(){
 			//PROGRESS("SLIP set to North boundary");
 	}
 	
-        if ( boundary_condition_W_ == "inflow") { // Inlet Turbulent properties
+      /*  if ( boundary_condition_W_ == "inflow") { // Inlet Turbulent properties
             real b;
             b = grid_.dy() * jmax ;
-
             for (int j = 1 ; j <=jmax ; ++j){
 
                         grid_.k()(0,j) = boundary_velocity_W_ * boundary_velocity_W_ * 0.003;
-                        grid_.e()(0,j) =  (c_nu * pow((grid_.k()(0,j)),1.5) )/(0.03 * b);
+                        grid_.e()(0,j) = (c_nu / (0.03 * b)) * pow((grid_.k()(0,j)),1.5);
+                        //grid_.e()(0,j) =  (c_nu * pow((grid_.k()(0,j)),1.5) )/(0.03 * b);
                 }
-
-        }
+        }*/
 	
 } // End boundary loop 
 
@@ -896,33 +1004,49 @@ void FluidSimulator::simulate(real duration){
 
 void FluidSimulator::simulateTimeStepCount( unsigned int nrOfTimeSteps ){
 
-	VTKWriter vtkWriter ( grid_, name_ , true, true );
+        VTKWriter vtkWriter ( grid_, name_ , true, true,true,true );
 
 	// Algorithm starts
 
 	//real t = 0.0; // 1:
 	size_t n = 0; // 1:
 
-	
-	refreshBoundaries(); // Boundary Conditions on u and v 
+    //grid_.p().fill(fread.getParameter<real>("P_INIT"));
+    //grid_.u().fill(fread.getParameter<real>("U_INIT"));
+    //grid_.v().fill(fread.getParameter<real>("V_INIT"));
+    grid_.k().fill(0.001);
+    grid_.e().fill(0.001);
+
+        refreshBoundaries(); // Boundary Conditions on u and v
 	// line 3:
 	if (name_ == "backstep"){
 	boundaryCorrection();
 	//Initialize lower domain to zero
 	initializeU();}
-	
+
+        //if(turbulenceMode == 1){
+          //  boundaryForKE();
+        //}
+
 	while(n <= nrOfTimeSteps){ 
 	
 	// Select delta t line 4:
 	determineNextDT();
 	
-
+        if(turbulenceMode == 1){
+            //std::cout << "Compute KE" << std::endl;
+            computeKE();
+            compute_nu_t();
+        }
 	
 	//Set boundary values for u and v (line 5:)
 	//refreshBoundaries(); 	
 	
 	// Compute F and G (line 6:)
-	computeFG();
+        if(turbulenceMode ==1){
+            computeFG_KE();}
+        else
+        computeFG();
 	
 	
 	//Compute right hand side of pressure equation (line 7:)

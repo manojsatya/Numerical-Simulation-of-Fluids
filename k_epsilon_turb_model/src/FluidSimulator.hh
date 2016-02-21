@@ -47,13 +47,16 @@ class FluidSimulator
       void initializeU();
       void printCourantNumber();
       void boundaryCorrection();
+      void boundaryForKE();
 
       StaggeredGrid grid_; 
+      FileReader fread;
       SORSolver solver_;
       real gx_;
       real gy_;
-      real nu;
       real Re_;
+      real nu;
+      int turbulenceMode;
       real gamma_;
       real dt_;
       real c_nu,c_eps,c_1,c_2;

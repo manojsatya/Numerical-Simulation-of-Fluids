@@ -20,9 +20,11 @@ Fluid(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>(
 name_(configuration.getStringParameterBoundary("name"))
 {
 	imax_ = configuration.getParameter<int>("imax");
-	CHECK_MSG(imax_ >= 20, "Please keep imax more than 20 for better results");
+        //CHECK_MSG(imax_ >= 20, "Please keep imax more than 20 for better results");
 	jmax_ = configuration.getParameter<int>("jmax");
-	CHECK_MSG(jmax_ >= 20, "Please keep jmax more than 20 for better results");
+        //CHECK_MSG(jmax_ >= 20, "Please keep jmax more than 20 for better results");
+        if(configuration.checkParameter("Turbulence")){
+        turbMode = configuration.getParameter<int>("Turbulence");}
 	dx_ = configuration.getParameter<real>("xlength") / real (configuration.getParameter<int>("imax")) ; // data type conversion
 	dy_ = configuration.getParameter<real>("ylength") / real (configuration.getParameter<int>("jmax")) ; // data type conversion
 	CHECK_MSG(!dx_ == 0.0, " Width cannot be zero . use <xlength> as parameter");
@@ -34,8 +36,12 @@ name_(configuration.getStringParameterBoundary("name"))
 	rhs_.fill(0.0);	
 	f_.fill(0.0);	
 	g_.fill(0.0);
+        //if(turbMode == 1){
+        k_.fill(configuration.getParameter<real>("k_INIT"));
+        e_.fill(configuration.getParameter<real>("e_INIT"));//}
+        /*else{
         k_.fill(0.0);
-        e_.fill(0.0);
+        e_.fill(0.0);}*/
 
 	Fluid.fill(10);
 	

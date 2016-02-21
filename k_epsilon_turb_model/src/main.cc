@@ -41,6 +41,7 @@ int main( int argc, char** argv )
 	StaggeredGrid grid(ifileread);
 	//GrayScaleImage imageReader("geometry.png");
 	//StaggeredGrid grid(imageReader);
+
 	
 	
 	
@@ -50,6 +51,7 @@ int main( int argc, char** argv )
 	
 
 	simulation.simulateTimeStepCount(timestepcount);
+        //grid.u().print();
 	
 	// To get values from specific point in the domain . Inputs are in (x,y) co-ordinates
     //simulation.getU(0.7,0.7); // U velocity value

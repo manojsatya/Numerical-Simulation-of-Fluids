@@ -56,7 +56,6 @@ public:
    // other dimension values are not allowed
    int getSize(int dimension ) const;
 
-
    // Print the whole array ( for debugging purposes )
    void print();
 

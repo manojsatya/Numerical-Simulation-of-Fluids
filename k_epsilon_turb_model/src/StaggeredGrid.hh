@@ -102,6 +102,7 @@ protected:
   
    int imax_;
    int jmax_;
+   int turbMode;
    std::string name_ ;
    real dx_;   //< distance between two grid points in x direction
    real dy_;   //< distance between two grid points in y direction

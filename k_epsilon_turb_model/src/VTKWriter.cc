@@ -15,9 +15,9 @@ const char * RealTypeToString<double>::str = "double";
 
 
 
-VTKWriter::VTKWriter(  const StaggeredGrid & grid, const std::string & basename, bool writePressure, bool writeVelocity )
+VTKWriter::VTKWriter(  const StaggeredGrid & grid, const std::string & basename, bool writePressure, bool writeVelocity, bool writeK, bool writeEPS )
       : grid_(grid), baseName_( basename ),
-        writeVelocity_(writeVelocity), writePressure_(writePressure), counter_ (0 )
+        writeVelocity_(writeVelocity), writePressure_(writePressure), writeK_(writeK), writeEPS_(writeEPS), counter_ (0 )
 {
    ASSERT_MSG( writePressure_ || writeVelocity_ , "VTK Writer has to write at least velocity or pressure" );
 
@@ -75,5 +75,24 @@ void VTKWriter::write()
             fileStream << grid_.p()( i+1, j+1 ) << "\n";
    }
 
+   if ( writeK_ )
+   {
+      fileStream << "SCALARS TurbKineEnergy " << RealTypeToString<real>::str << " 1\n";
+      fileStream << "LOOKUP_TABLE default\n";
+
+      for ( int j = 0; j < jmax; ++j )
+         for ( int i = 0; i < imax; ++i )
+            fileStream << grid_.k()( i+1, j+1 ) << "\n";
+   }
+
+   if ( writeEPS_ )
+   {
+      fileStream << "SCALARS Dissipation " << RealTypeToString<real>::str << " 1\n";
+      fileStream << "LOOKUP_TABLE default\n";
+
+      for ( int j = 0; j < jmax; ++j )
+         for ( int i = 0; i < imax; ++i )
+            fileStream << grid_.e()( i+1, j+1 ) << "\n";
+   }
    ++counter_;
 }
