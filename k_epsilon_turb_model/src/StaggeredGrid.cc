@@ -16,6 +16,10 @@ g_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jm
 k_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 e_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 nut_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+fnu_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+f1_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+f2_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+d_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 Fluid(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 name_(configuration.getStringParameterBoundary("name"))
 {
@@ -70,11 +74,19 @@ g_(xSize+2,ySize+1),
 k_(xSize+2,ySize+2),
 e_(xSize+2,ySize+2),
 nut_(xSize+2,ySize+2),
+fnu_(xSize+2,ySize+2),
+f1_(xSize+2,ySize+2),
+f2_(xSize+2,ySize+2),
+d_(xSize+2,ySize+2),
 Fluid(xSize+2,ySize+2),dx_{dx},dy_{dy}{
 Fluid.fill(100);
    p_.fill(1.0);
    u_.fill(1.0);
    v_.fill(1.0);
+   nut_.fill(0.0);
+   fnu_.fill(0.0);
+   f1_.fill(0.0);
+   f2_.fill(0.0);
 
 }
 

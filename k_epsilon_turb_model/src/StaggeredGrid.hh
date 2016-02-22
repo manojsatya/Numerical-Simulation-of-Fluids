@@ -47,6 +47,11 @@ public:
     Array<real> & k()  { return k_;  }
     Array<real> & e()  { return e_;  }
     Array<real> & nut()  { return nut_;  }
+    Array<real> & fnu()  { return fnu_;  }
+    Array<real> & f1()  { return f1_;  }
+    Array<real> & f2()  { return f2_;  }
+    Array<real> & d()  { return d_;  }
+
 
     //Array<unsigned char> & Fluid() {return Fluid;}
 
@@ -59,6 +64,10 @@ public:
     const Array<real> & k() const { return k_; }
     const Array<real> & e() const { return e_; }
     const Array<real> & nut() const { return nut_; }
+    const Array<real> & fnu() const  { return fnu_;  }
+    const Array<real> & f1() const { return f1_;  }
+    const Array<real> & f2() const { return f2_;  }
+    const Array<real> & d() const { return d_;  }
 
     //const Array<unsigned char> & Fluid() const {return Fluid;}
 
@@ -73,7 +82,7 @@ public:
    inline real& g(const int x, const int y, Direction dir);
    inline real& k(const int x, const int y, Direction dir);
    inline real& e(const int x, const int y, Direction dir);
-   inline real& nut(const int x, const int y, Direction dir);
+   //inline real& nut(const int x, const int y, Direction dir);
 
 
    inline bool isFluid(const int x,const int y){return Fluid(x,y);}
@@ -98,6 +107,11 @@ protected:
    Array<real> k_;
    Array<real> e_;
    Array<real> nut_;
+   Array<real> fnu_;
+   Array<real> f1_;
+   Array<real> f2_;
+   Array<real> d_;
+
   Array<unsigned char> Fluid;
   
    int imax_;
@@ -195,16 +209,16 @@ inline real& StaggeredGrid::v(const int x, const int y, Direction dir){
 inline real& StaggeredGrid::k(const int x, const int y, Direction dir){
     switch (dir) {
       case NORTH:
-        if(Fluid(x,y+1)) return k_(x,y+1); else return k_(x,y+1)= 0.0;
+        if(Fluid(x,y+1)) return k_(x,y+1); else return k_(x,y+1)= 0;
 
       case SOUTH:
-        if(Fluid(x,y-1)) return k_(x,y-1); else return k_(x,y-1)=0.0;
+        if(Fluid(x,y-1)) return k_(x,y-1); else return k_(x,y-1)=0;
 
       case WEST:
-        if (Fluid(x-1,y)) return k_(x-1,y); else return k_(x-1,y)=0.0;
+        if (Fluid(x-1,y)) return k_(x-1,y); else return k_(x-1,y)=0;
 
       case EAST:
-        if (Fluid(x+1,y)) return k_(x+1,y); else return k_(x+1,y)=0.0;
+        if (Fluid(x+1,y)) return k_(x+1,y); else return k_(x+1,y)=0;
 
       default : return k_(x,y); }
 

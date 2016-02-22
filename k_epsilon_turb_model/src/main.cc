@@ -51,7 +51,7 @@ int main( int argc, char** argv )
 	
 
 	simulation.simulateTimeStepCount(timestepcount);
-        //grid.u().print();
+        //grid.d().print();
 	
 	// To get values from specific point in the domain . Inputs are in (x,y) co-ordinates
     //simulation.getU(0.7,0.7); // U velocity value

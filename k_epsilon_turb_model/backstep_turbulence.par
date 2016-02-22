@@ -31,7 +31,7 @@ e_INIT                 0.001        # Initial dissipation
 # Geometry Data:
 # -------------
 
-xlength                30.0	   # domain size in x-direction
+xlength                30	   # domain size in x-direction
 ylength                2.0		   # domain size in y-direction
 imax                   100		   # number of interior cells in x-direction //Orginal:100
 jmax                   20		   # number of interior cells in y-direction //Orginal:25
@@ -46,8 +46,8 @@ RectangleY2            0.75      # y-coordinate of top-right point of the rectan
 # Time Data:
 # ---------
 
-dt                     0.02      # time stepsize
-timesteps              15   # number of timesteps
+dt                     0.02     # time stepsize
+timesteps              3   # number of timesteps
 safetyfactor           0.5       # factor "tau" for timestep size control (<=0 means constant dt)
 
 # Pressure Iteration Data:

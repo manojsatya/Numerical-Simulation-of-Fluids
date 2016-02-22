@@ -34,12 +34,16 @@ class FluidSimulator
       void computeFG();
       void composeRHS();
       void compute_nu_t();
+      real inletLength();
+      real initK();
 
-      real f_nu(int i,int j);
-      real f_1(int i,int j);
-      real f_2(int i,int j);
-      real nu_t(int i,int j);
+      //real f_nu(int i,int j);
+      //real f_1(int i,int j);
+      //real f_2(int i,int j);
+      //real nu_t(int i,int j);
       real nu_t_str(int i,int j);
+      void computeDistanceFromWalls();
+      void compute_RANSCoeff();
       void updateVelocities();
       void determineNextDT();
       void refreshBoundaries(); 
