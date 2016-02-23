@@ -14,7 +14,9 @@ f_(configuration.getParameter<int>("imax")+1,configuration.getParameter<int>("jm
 v_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+1),
 g_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+1),
 k_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+knew_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 e_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
+enew_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 nut_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 fnu_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
 f1_(configuration.getParameter<int>("imax")+2,configuration.getParameter<int>("jmax")+2),
@@ -40,12 +42,12 @@ name_(configuration.getStringParameterBoundary("name"))
 	rhs_.fill(0.0);	
 	f_.fill(0.0);	
 	g_.fill(0.0);
-        //if(turbMode == 1){
+        if(turbMode == 1){
         k_.fill(configuration.getParameter<real>("k_INIT"));
-        e_.fill(configuration.getParameter<real>("e_INIT"));//}
-        /*else{
+        e_.fill(configuration.getParameter<real>("e_INIT"));}
+        else{
         k_.fill(0.0);
-        e_.fill(0.0);}*/
+        e_.fill(0.0);}
 
 	Fluid.fill(10);
 	
@@ -72,7 +74,9 @@ f_(xSize+1,ySize+2),
 v_(xSize+2,ySize+1),
 g_(xSize+2,ySize+1),
 k_(xSize+2,ySize+2),
+knew_(xSize+2,ySize+2),
 e_(xSize+2,ySize+2),
+enew_(xSize+2,ySize+2),
 nut_(xSize+2,ySize+2),
 fnu_(xSize+2,ySize+2),
 f1_(xSize+2,ySize+2),
@@ -83,6 +87,8 @@ Fluid.fill(100);
    p_.fill(1.0);
    u_.fill(1.0);
    v_.fill(1.0);
+   //k_.fill(0.001);
+   //e_.fill(0.001);
    nut_.fill(0.0);
    fnu_.fill(0.0);
    f1_.fill(0.0);

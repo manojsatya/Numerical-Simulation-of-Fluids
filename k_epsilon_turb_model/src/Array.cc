@@ -111,8 +111,6 @@ real Array<T>::get_abs_maxelement(){
 	return abs_Maxelement;
 }
 
-
-
 // Explicit instantiation of template
 template class Array<unsigned char>;
 template class Array<real>;
