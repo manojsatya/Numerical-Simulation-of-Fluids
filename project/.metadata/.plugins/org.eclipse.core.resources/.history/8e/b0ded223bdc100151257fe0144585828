@@ -1,0 +1,80 @@
+#ifndef __FLUID_SIMULATOR_H__
+#define __FLUID_SIMULATOR_H__
+
+
+#include "FileReader.hh"
+#include "StaggeredGrid.hh"
+#include "SORSolver.hh"
+#include <string>
+#include "Debug.hh"
+#include "BhFactory.hh"
+#include <limits>
+#include <time.h>
+#include <vector>
+#include <math.h>
+#include <cmath>
+
+class FluidSimulator
+{
+  public:
+      FluidSimulator( FileReader & conf );
+
+      /// Simulates a given time-length
+      void simulate             ( real duration              );
+      void simulateTimeStepCount( unsigned int nrOfTimeSteps = std::numeric_limits<unsigned>::min());
+
+
+      // Getter functions for the internally stored StaggeredGrid
+      StaggeredGrid & grid() {return sg;}
+      const StaggeredGrid & grid() const {return sg;}
+      real square(real x);
+      void composeRHS();
+      void updateVelocities();
+      void determineNextDT();
+      bool checkHirt();
+      void normalize_pressure();
+      void makeWorld();
+
+  private:
+      void computeFG();      //calculates F and G
+      void computeKE();     //calculates k and epsilon for turbulence model
+      void compute_delta(); //calculates nearest wall distance
+
+
+      real f_nu(int j, int i);
+      real f_1(int j, int i);
+      real f_2(int j, int i);
+      real nu_star(int j, int i);
+      real nu_t(int j, int i);
+
+      void compute_nu_t();
+
+      StaggeredGrid sg;
+      SORSolver solver;
+      real dt;
+      real dt_safety;
+      unsigned int timesteps;
+      real simulation_time;
+      real gx;
+      real gy;
+      real Re;
+      real nu;
+      real U_init;
+      real V_init;
+      real P_init;
+      real gamma;
+      bool turb_mode;
+      real c_nu,c_eps,c_1,c_2; //turbulence experimental parameters
+      BhFactory bh;
+      int write_freq; // for VTK
+      int normalization_freq;
+      real safety_factor;
+      std::string name;
+      std::vector<real> Rect_geometry;
+      std::vector<real> Circle_geometry;
+      std::string load_name, save_name;
+};
+
+
+
+#endif

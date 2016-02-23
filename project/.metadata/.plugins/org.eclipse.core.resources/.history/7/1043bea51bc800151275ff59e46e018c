@@ -1,0 +1,374 @@
+#include "BhFactory.hh"
+
+BhFactory::BhFactory (FileReader & conf )
+{
+
+	//reading type of boundary
+  if(conf.checkParameter("boundary_condition_N"))
+	  boundary_condition_N = conf.getStringParameter("boundary_condition_N");
+  else
+  {
+	  INFO("Setting NORTH Boundary to NOSLIP, no parameter found");
+	  boundary_condition_N = "NOSLIP";
+  }
+
+  if(conf.checkParameter("boundary_condition_E"))
+ 	  boundary_condition_E = conf.getStringParameter("boundary_condition_E");
+  else
+  {
+	  INFO("Setting EAST Boundary to NOSLIP, no parameter found");
+	  boundary_condition_E = "NOSLIP";
+  }
+
+if(conf.checkParameter("boundary_condition_W"))
+	  boundary_condition_W = conf.getStringParameter("boundary_condition_W");
+  else
+  {
+	  INFO("Setting WEST Boundary to NOSLIP, no parameter found");
+	  boundary_condition_W = "NOSLIP";
+  }
+
+  if(conf.checkParameter("boundary_condition_S"))
+	  boundary_condition_S = conf.getStringParameter("boundary_condition_S");
+  else
+  {
+	  INFO("Setting SOUTH Boundary to NOSLIP, no parameter found");
+	  boundary_condition_S = "NOSLIP";
+  }
+
+  //reading velocity values
+   if(conf.checkParameter("boundary_velocity_N"))
+ 	  boundary_velocity_N = conf.getParameter("boundary_velocity_N");
+   else
+   {
+ 	  INFO("Setting NORTH Boundary to 0 velocity, no parameter found");
+ 	  boundary_velocity_N = 0;
+   }
+
+   if(conf.checkParameter("boundary_velocity_E"))
+  	  boundary_velocity_E = conf.getParameter("boundary_velocity_E");
+   else
+   {
+ 	  INFO("Setting EAST Boundary to 0 velocity, no parameter found");
+ 	  boundary_velocity_E = 0;
+   }
+
+ if(conf.checkParameter("boundary_velocity_W"))
+ 	  boundary_velocity_W = conf.getParameter("boundary_velocity_W");
+   else
+   {
+ 	  INFO("Setting WEST Boundary to 0 velocity, no parameter found");
+ 	  boundary_velocity_W = 0;
+   }
+
+   if(conf.checkParameter("boundary_velocity_S"))
+ 	  boundary_velocity_S = conf.getParameter("boundary_velocity_S");
+   else
+   {
+ 	  INFO("Setting SOUTH Boundary to 0 velocity, no parameter found");
+ 	  boundary_velocity_S = 0;
+   }
+internal_time = 0;
+
+if(conf.checkParameter("Turbulence"))
+	turb_mode = conf.getParameter("Turbulence"); //switches between turbulence(1) and non- turbulence mode(0)
+else
+{
+	turb_mode = 0;
+	WARN("Turbulence is off");
+}
+
+ b     = conf.getParameter("ylength"); //Canal y_length for calculation of e_in
+ a     = conf.getParameter("xlength"); //Canal x_length for calculation of e_in
+
+Check_for_sense();
+ }
+
+
+void BhFactory::Check_for_sense()
+{
+	CHECK_MSG(! (isequals(boundary_condition_N,"OUTFLOW")&& (boundary_velocity_N!=0)), "boundary_condition_N::Prescribing outflow velocity does not make sense");
+	CHECK_MSG(! (isequals(boundary_condition_E,"OUTFLOW")&& (boundary_velocity_E!=0)), "boundary_condition_E::Prescribing outflow velocity does not make sense");
+	CHECK_MSG(! (isequals(boundary_condition_W,"OUTFLOW")&& (boundary_velocity_W!=0)), "boundary_condition_W::Prescribing outflow velocity does not make sense");
+	CHECK_MSG(! (isequals(boundary_condition_S,"OUTFLOW")&& (boundary_velocity_S!=0)), "boundary_condition_S::Prescribing outflow velocity does not make sense");
+
+
+	CHECK_MSG(! (isequals(boundary_condition_N,"INFLOW")&& (boundary_velocity_N==0)), "boundary_condition_N::No inflow velocity prescribed");
+	CHECK_MSG(! (isequals(boundary_condition_E,"INFLOW")&& (boundary_velocity_E==0)), "boundary_condition_E::No inflow velocity prescribed");
+	CHECK_MSG(! (isequals(boundary_condition_W,"INFLOW")&& (boundary_velocity_W==0)), "boundary_condition_W::No inflow velocity prescribed");
+	CHECK_MSG(! (isequals(boundary_condition_S,"INFLOW")&& (boundary_velocity_S==0)), "boundary_condition_S::No inflow velocity prescribed");
+
+	CHECK_MSG(! (isequals(boundary_condition_N,"FREESLIP") && (turb_mode == 1)), "FREESLIP not implemented for TURBULENCE");
+	CHECK_MSG(! (isequals(boundary_condition_E,"FREESLIP") && (turb_mode == 1)), "FREESLIP not implemented for TURBULENCE");
+	CHECK_MSG(! (isequals(boundary_condition_W,"FREESLIP") && (turb_mode == 1)), "FREESLIP not implemented for TURBULENCE");
+	CHECK_MSG(! (isequals(boundary_condition_S,"FREESLIP") && (turb_mode == 1)), "FREESLIP not implemented for TURBULENCE");
+
+	if(isequals(boundary_condition_N,"PERIODIC")||isequals(boundary_condition_S,"PERIODIC"))
+	CHECK_MSG( (isequals(boundary_condition_N,"PERIODIC")&& (isequals(boundary_condition_S,"PERIODIC")) ),"NORTH and SOUTH should be periodic simultaneously");
+
+	if(isequals(boundary_condition_E,"PERIODIC")||isequals(boundary_condition_W,"PERIODIC"))
+    CHECK_MSG( (isequals(boundary_condition_E,"PERIODIC")&& (isequals(boundary_condition_W,"PERIODIC")) ),"EAST and WEST should be periodic simultaneously");
+
+}
+
+bool BhFactory::isequals(std::string& a, const std::string& b)
+{
+    unsigned int sz = a.size();
+    if (b.size() != sz)
+        return false;
+    for (unsigned int i = 0; i < sz; ++i)
+        if (tolower(a[i]) != tolower(b[i]))
+            return false;
+    return true;
+}
+// currently only No-slip available
+void BhFactory::refreshBoundaries(StaggeredGrid &sg)
+{
+  Array<real> *u = &sg.u();
+  Array<real> *v = &sg.v();
+
+  Array<real> *k = &sg.k_old();
+  Array<real> *e = &sg.e_old();
+
+  // No-slip
+  if(isequals(boundary_condition_E , "NOSLIP")  )
+  {
+	  u->fill_right_boundary(0);
+	  v->copy_right_ghost(-1,2*boundary_velocity_E);
+
+	  if(turb_mode)
+		  {
+		      //k->copy_right_ghost(-1.0);
+		      k->fill_right_boundary(0.0);
+		  	  e->copy_right_ghost();
+		  }
+
+
+  }
+  if(isequals(boundary_condition_W , "NOSLIP")  )
+  {
+	  u->fill_left_boundary(0);
+	  v->copy_left_ghost(-1,2*boundary_velocity_W);
+
+	  if(turb_mode)
+		  {
+		  	  //k->copy_left_ghost(-1.0);
+		  	  k->fill_left_boundary(0.0);
+		  	  e->copy_left_ghost();
+		  }
+  }
+
+  if(isequals(boundary_condition_N , "NOSLIP") )
+  {
+      u->copy_top_ghost(-1,2*boundary_velocity_N );
+      v->fill_top_boundary(0);
+
+	  if(turb_mode)
+		  {
+		  	  //k->copy_top_ghost(-1.0);
+		  	  k->fill_top_boundary(0.0);
+		  	  e->copy_top_ghost();
+		  }
+  }
+  if(isequals(boundary_condition_S , "NOSLIP") )
+  {
+      u->copy_bottom_ghost(-1,2*boundary_velocity_S);
+      v->fill_bottom_boundary(0);
+
+	  if(turb_mode)
+		  {
+		  	  //k->copy_bottom_ghost(-1.0);
+		  	  k->fill_bottom_boundary(0.0);
+		  	  e->copy_bottom_ghost();
+		  }
+  }
+
+
+
+ //FREE SLIP
+ if(isequals(boundary_condition_E, "FREESLIP"))
+ {
+	 u->fill_right_boundary(0);
+	 v->copy_right_ghost(1);
+
+
+ }
+ if(isequals(boundary_condition_W, "FREESLIP"))
+ {
+	 u->fill_left_boundary(0);
+	 v->copy_left_ghost(1);
+
+
+ }
+ if(isequals(boundary_condition_N, "FREESLIP"))
+ {
+	 u->copy_top_ghost(1);
+	 v->fill_top_boundary(0);
+
+ }
+ if(isequals(boundary_condition_S, "FREESLIP"))
+ {
+	 u->copy_bottom_ghost(1);
+	 v->fill_bottom_boundary(0);
+
+ }
+
+//INFLOW
+if(isequals(boundary_condition_E , "INFLOW"))
+{
+	  u->fill_right_boundary(boundary_velocity_E);
+	  v->copy_right_ghost(-1);
+
+	  if(turb_mode)
+		  {
+		      real k_in = 0.003* std::pow(boundary_velocity_E,2);
+		      real c_nu  = 0.09;
+		      real e_in = ( c_nu/(0.03*b) ) * std::pow(k_in,1.5);
+		     // k->copy_right_ghost(-1.0, 2.0*k_in);
+		    //  e->copy_right_ghost(-1.0, 2.0*e_in);
+		  	  k->fill_right_boundary(k_in);
+		  	  e->fill_right_boundary(e_in);
+		   }
+}
+
+if(isequals(boundary_condition_W , "INFLOW"))
+{
+	  u->fill_left_boundary(boundary_velocity_W);
+	  v->copy_left_ghost(-1);
+
+	  if(turb_mode)
+		  {
+		      real k_in = 0.003* std::pow(boundary_velocity_W,2);
+		      real c_nu  = 0.09;
+		      real e_in = ( c_nu/(0.03*b) ) * std::pow(k_in,1.5);
+		    //  k->copy_left_ghost(-1.0, 2.0*k_in);
+		     // e->copy_left_ghost(-1.0, 2.0*e_in);
+		  	  k->fill_left_boundary(k_in);
+		  	  e->fill_left_boundary(e_in);
+		  }
+}
+
+if(isequals(boundary_condition_N , "INFLOW"))
+{
+	  u->fill_top_boundary(boundary_velocity_N);
+	  v->copy_top_ghost(-1);
+
+	  if(turb_mode)
+		  {
+		      real k_in = 0.003* std::pow(boundary_velocity_N,2);
+		      real c_nu  = 0.09;
+		      real e_in = ( c_nu/(0.03*a) ) * std::pow(k_in,1.5);
+//		      k->copy_top_ghost(-1.0, 2.0*k_in);
+	//	      e->copy_top_ghost(-1.0, 2.0*e_in);
+		      k->fill_top_boundary(k_in);
+		  	  e->fill_top_boundary(e_in);
+		  }
+
+}
+
+if(isequals(boundary_condition_S , "INFLOW"))
+{
+	  u->fill_bottom_boundary(boundary_velocity_S);
+	  v->copy_bottom_ghost(-1);
+
+	  if(turb_mode)
+		  {
+		      real k_in = 0.003* std::pow(boundary_velocity_S,2);
+		      real c_nu  = 0.09;
+		      real e_in = ( c_nu/(0.03*a) ) * std::pow(k_in,1.5);
+		      //k->copy_bottom_ghost(-1.0, 2.0*k_in);
+		      //e->copy_bottom_ghost(-1.0, 2.0*e_in);
+		      k->fill_bottom_boundary(k_in);
+		  	  e->fill_bottom_boundary(e_in);
+		  }
+}
+
+//OUTFLOW
+if(isequals(boundary_condition_E , "OUTFLOW"))
+{
+	  u->copy_right_ghost(1);
+	  v->copy_right_ghost(1);
+
+	  if(turb_mode)
+		  {
+		  	  k->copy_right_ghost();
+		  	  e->copy_right_ghost();
+		  }
+}
+if(isequals(boundary_condition_W , "OUTFLOW"))
+{
+	  u->copy_left_ghost(1);
+	  v->copy_left_ghost(1);
+
+	  if(turb_mode)
+		  {
+		  	  k->copy_left_ghost();
+		  	  e->copy_left_ghost();
+		  }
+}
+
+if(isequals(boundary_condition_N , "OUTFLOW"))
+{
+	  u->copy_top_ghost(1);
+	  v->copy_top_ghost(1);
+
+	  if(turb_mode)
+		  {
+		  	  k->copy_top_ghost();
+		  	  e->copy_top_ghost();
+		  }
+}
+if(isequals(boundary_condition_S , "OUTFLOW"))
+{
+	  u->copy_bottom_ghost(1);
+	  v->copy_bottom_ghost(1);
+
+	  if(turb_mode)
+		  {
+		  	  k->copy_bottom_ghost();
+		  	  e->copy_bottom_ghost();
+		  }
+}
+
+//PERIODIC
+if(isequals(boundary_condition_E , "PERIODIC"))
+{
+
+	  Array<real> *p = &sg.p();
+	  std::vector<int> u_direction = {1,-1};
+	  u->wrap_x(u_direction);
+	  std::vector<int> v_direction = {1, 1,-1};
+	  v->wrap_x(v_direction);
+	  std::vector<int> p_direction = {0,-1};
+	  p->wrap_x(p_direction);
+
+
+	  if(turb_mode)
+		  {
+		  	  k->wrap_x(p_direction);
+		  	  e->wrap_x(p_direction);
+		  }
+
+}
+
+if(isequals(boundary_condition_N , "PERIODIC"))
+{
+	  Array<real> *p = &sg.p();
+
+	  std::vector<int> u_direction = {1,1,-1};
+	  u->wrap_y(u_direction);
+	  std::vector<int> v_direction = {1,-1};
+	  v->wrap_y(v_direction);
+	  std::vector<int> p_direction = {0,-1};
+	  p->wrap_y(p_direction);
+
+	  if(turb_mode)
+		  {
+		  	  k->wrap_y(p_direction);
+		  	  e->wrap_y(p_direction);
+		  }
+
+}
+
+++internal_time;
+}

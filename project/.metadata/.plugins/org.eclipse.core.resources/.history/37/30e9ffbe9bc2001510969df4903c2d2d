@@ -1,0 +1,732 @@
+#include "FluidSimulator.hh"
+#include "VTKWriter.hh"
+
+//constructor
+FluidSimulator::FluidSimulator(FileReader & conf):sg(conf),solver(conf),bh(conf)
+{
+	if(conf.checkParameter("name"))
+	 name = conf.getStringParameter("name");
+	else
+	 name = "Default";
+
+	if(conf.checkParameter("GX"))
+	 gx = conf.getParameter("GX");
+	else
+	 gx=0;
+
+	if(conf.checkParameter("GY"))
+	 gy = conf.getParameter("GY");
+	else
+	 gy=0;
+
+	CHECK_MSG(!(conf.checkParameter("Re") && conf.checkParameter("nu")), "specify either viscosity or Reynold's number"); //currently nu for turbulence and Re for laminar flows
+
+	if(conf.checkParameter("Re"))
+	{
+	Re = conf.getParameter("Re");
+	CHECK_MSG(Re>0,"Reynolds number should be greater than 0");
+	}
+
+	if(conf.checkParameter("nu"))
+	{
+	nu = conf.getParameter("nu");
+	CHECK_MSG(nu>0,"viscosity(nu) should be greater than 0");
+
+	Re = 1*1*((2*30*4)/(30+4))/nu; //TODO
+	std::cout<<"Re"<<Re;             //TODO
+	}
+
+	if(conf.checkParameter("U_init"))
+     U_init = conf.getParameter("U_init");
+	else if(conf.checkParameter("U_INIT"))
+	 U_init = conf.getParameter("U_INIT");
+	else
+     U_init = 0;
+
+	if(conf.checkParameter("V_init"))
+     V_init = conf.getParameter("V_init");
+	else if(conf.checkParameter("V_INIT"))
+	 V_init = conf.getParameter("V_INIT");
+	else
+	 V_init = 0;
+
+	if(conf.checkParameter("P_init"))
+     P_init = conf.getParameter("P_init");
+	else if(conf.checkParameter("P_INIT"))
+	 P_init = conf.getParameter("P_INIT");
+	else
+	 P_init = 0;
+
+	if(conf.checkParameter("k_init"))
+     k_init = conf.getParameter("k_init");
+	else if(conf.checkParameter("P_INIT"))
+	 k_init = conf.getParameter("k_INIT");
+	else
+	 k_init = 0.001;
+
+	if(conf.checkParameter("e_init"))
+     e_init = conf.getParameter("e_init");
+	else if(conf.checkParameter("e_INIT"))
+	 e_init = conf.getParameter("e_INIT");
+	else
+	 e_init = 0.001;
+
+	if(conf.checkParameter("dt"))
+      dt_safety =  conf.getParameter("dt");
+	else
+	{
+	  dt_safety =   0.002;
+	  WARN("dt not specified; setting to 0.002");
+	}
+
+    if(conf.checkParameter("Turbulence"))
+    	turb_mode = conf.getParameter("Turbulence"); //switches between turbulence(1) and non- turbulence mode(0)
+    else
+    {
+    	turb_mode = 0;
+    	WARN("Turbulence is off");
+    }
+
+	timesteps =  conf.getParameter("timesteps");
+
+    gamma     = conf.getParameter("gamma");
+    CHECK_MSG(gamma>=0||gamma<=1,"gamma not between 0 and 1");
+
+    if(conf.checkParameter("outputinterval"))
+    write_freq = conf.getIntParameter("outputinterval");
+    else
+    {
+    	INFO("Setting Write Frequency to 1, No parameter found");
+    	write_freq = 1;
+    }
+
+    if(conf.checkParameter("normalizationfrequency"))
+     normalization_freq = conf.getIntParameter("normalizationfrequency");
+    else
+     normalization_freq = 100;
+
+    if(conf.checkParameter("safetyfactor"))
+     safety_factor = conf.getParameter("safetyfactor");
+    else
+     safety_factor = 0.5;
+
+    simulation_time = std::numeric_limits<real>::max();//It is only activated by function simulate
+
+    if(conf.checkParameter("RectangleX1"))
+       Rect_geometry.push_back(conf.getParameter("RectangleX1"));
+
+    if(conf.checkParameter("RectangleY1"))
+        Rect_geometry.push_back(conf.getParameter("RectangleY1"));
+
+    if(conf.checkParameter("RectangleX2"))
+        Rect_geometry.push_back(conf.getParameter("RectangleX2"));
+
+    if(conf.checkParameter("RectangleY2"))
+       Rect_geometry.push_back(conf.getParameter("RectangleY2"));
+
+    if(conf.checkParameter("CircleX"))
+          Circle_geometry.push_back(conf.getParameter("CircleX"));
+
+    if(conf.checkParameter("CircleY"))
+          Circle_geometry.push_back(conf.getParameter("CircleY"));
+
+    if(conf.checkParameter("CircleR"))
+          Circle_geometry.push_back(conf.getParameter("CircleR"));
+
+    if(conf.checkParameter("Geometry"))
+          load_name = conf.getStringParameter("Geometry");
+    else
+    	load_name = "not_specified";
+
+    if(conf.checkParameter("Saveas"))
+    	save_name = conf.getStringParameter("Saveas");
+    else
+    	save_name = "not_specified";
+
+        c_nu  = 0.09; //also assigned same value in Boundary Handling (Free Slip)
+		c_eps = 0.07;
+		c_1   = 0.126;
+		c_2   = 1.92;
+}
+
+real FluidSimulator::square(real x)
+{
+	return x*x;
+}
+
+
+void FluidSimulator::computeFG()
+{
+	PRG_LEVEL("Compute FG");
+
+
+	Array<real> *u = &sg.u();
+	Array<real> *v = &sg.v();
+	Array<real> *f = &sg.f();
+	Array<real> *g = &sg.g();
+
+
+    //setting boundaries of f and g
+	f->fill_left_boundary(*u);
+	f->fill_right_boundary(*u);
+	g->fill_top_boundary(*v);
+	g->fill_bottom_boundary(*v);
+
+	real dx_inv = 1.0/sg.dx();
+	real dy_inv = 1.0/sg.dy();
+	real Re_inv = 1.0/Re;
+
+
+	for (int j=1; j<= sg.jmax();++j)
+		for(int i=1; i<sg.imax(); ++i)
+		{
+			if(sg.isFluid(j,i)&&sg.isFluid(j,i+1)) //if I am on a Fluid edge
+			{
+			  // temporaries for convenience
+
+			    ///// right edge discretizations
+			    real u_avg_right_1  = 0.5*(sg.u(j,i,CENTER)   + sg.u(j,i,EAST));
+			    real u_avg_left_1   = 0.5*(sg.u(j,i,WEST) + sg.u(j,i,CENTER));
+				real du_sq_by_dx = dx_inv *  ( square( u_avg_right_1 ) - square( u_avg_left_1 ) )
+						         + gamma * dx_inv * ( std::abs(u_avg_right_1) * 0.5 * ( sg.u(j,i,CENTER) - sg.u(j,i,EAST) )
+						         - std::abs(u_avg_left_1) * 0.5 * ( sg.u(j,i,WEST) - sg.u(j,i,CENTER) ) );
+
+				real v_avg_top_1 = 0.5 *( sg.v(j,i,CENTER) + sg.v(j,i,EAST) );
+				real v_avg_bot_1 = 0.5 *( sg.v(j,i,SOUTH) + sg.v(j-1,i,EAST) );
+				real u_avg_top_1 = 0.5 *( sg.u(j,i,CENTER)  + sg.u(j,i,NORTH) );
+				real u_avg_bot_1 = 0.5 *( sg.u(j,i,SOUTH) + sg.u(j,i,CENTER) );
+
+				real duv_by_dy   = dy_inv * ( v_avg_top_1 * u_avg_top_1  - v_avg_bot_1 * u_avg_bot_1 )
+						         + gamma * dy_inv * ( std::abs(v_avg_top_1) * 0.5 * ( sg.u(j,i,CENTER) - sg.u(j,i,NORTH) )
+						        		           -( std::abs(v_avg_bot_1) * 0.5 * ( sg.u(j,i,SOUTH) - sg.u(j,i,CENTER) ) ) );
+
+				real du_sq_by_dx_sq, du_sq_by_dy_sq_sym, dk_by_dx_term; //sym since contains symmetric part in turbulence
+
+				if(!turb_mode)
+				{
+					du_sq_by_dx_sq = square(dx_inv)* ( sg.u(j,i,WEST) - 2*sg.u(j,i,CENTER) + sg.u(j,i,EAST) );
+					du_sq_by_dy_sq_sym = square(dy_inv)* ( sg.u(j,i,SOUTH) - 2*sg.u(j,i,CENTER) + sg.u(j,i,NORTH) );
+					dk_by_dx_term = 0;
+				}
+				else
+				{
+					Re_inv = 1; //we don't need Reynolds since we use viscosity for turbulence
+		     		du_sq_by_dx_sq = 2.0 * square(dx_inv)* ( nu_star(j,i+1) * (sg.u(j,i,EAST) - sg.u(j,i,CENTER)) -
+							                           nu_star(j,i) * (sg.u(j,i,CENTER) - sg.u(j,i,WEST)) );
+
+		     		real nu_star_N = 0.25* ( nu_star(j+1,i+1) + nu_star(j+1,i) + nu_star(j,i+1) + nu_star(j,i) );
+		     		real du_by_dy_N = dy_inv * ( sg.u(j,i,NORTH) - sg.u(j,i,CENTER) );
+		     		real dv_by_dx_N = dx_inv * ( sg.v(j,i,EAST)  - sg.v(j,i,CENTER) );
+
+		     		real nu_star_S = 0.25* ( nu_star(j-1,i+1) + nu_star(j-1,i) + nu_star(j,i+1) + nu_star(j,i) );
+		     		real du_by_dy_S = dy_inv * ( sg.u(j,i,CENTER) - sg.u(j,i,SOUTH) );
+		     		real dv_by_dx_S = dx_inv * ( sg.v(j-1,i,EAST) - sg.v(j,i,SOUTH) );
+					du_sq_by_dy_sq_sym  = dy_inv* ( nu_star_N *(du_by_dy_N + dv_by_dx_N) - nu_star_S *(du_by_dy_S + dv_by_dx_S) );
+
+					dk_by_dx_term = (2.0/3.0) * dx_inv * ( sg.k_old(j,i,EAST) - sg.k_old(j,i,CENTER) );
+				}
+
+
+				(*f)(j,i) = sg.u(j,i,CENTER) + dt * ( Re_inv * (du_sq_by_dx_sq + du_sq_by_dy_sq_sym) - dk_by_dx_term -  du_sq_by_dx - duv_by_dy + gx);
+			}
+		}
+
+	for (int j=1; j< sg.jmax();++j)
+		for(int i=1; i<=sg.imax(); ++i)
+		{
+			if(sg.isFluid(j,i) && sg.isFluid(j+1,i)) //if I am on a Fluid edge
+			{
+				//////upper edge discretizations
+				real u_avg_right_2  = 0.5*( sg.u(j,i,CENTER) + sg.u(j,i,NORTH) );
+				real u_avg_left_2   = 0.5*( sg.u(j,i,WEST) + sg.u(j,i-1,NORTH) );
+				real v_avg_right_2  = 0.5*( sg.v(j,i,CENTER) + sg.v(j,i,EAST) );
+				real v_avg_left_2   = 0.5*( sg.v(j,i,WEST) + sg.v(j,i,CENTER) );
+
+				real duv_by_dx = dx_inv * (u_avg_right_2 * v_avg_right_2 - u_avg_left_2 * v_avg_left_2)
+						        + gamma * dx_inv * ( ( std::abs(u_avg_right_2)* 0.5 * ( sg.v(j,i,CENTER)-sg.v(j,i,EAST) ) )
+						        		            - (std::abs(u_avg_left_2) * 0.5 * ( sg.v(j,i,WEST)-sg.v(j,i,CENTER) ) ) );
+
+				real v_avg_top_2 = 0.5* ( sg.v(j,i,CENTER) + sg.v(j,i,NORTH) );
+				real v_avg_bot_2 = 0.5* ( sg.v(j,i,SOUTH) + sg.v(j,i,CENTER) );
+				real dv_sq_by_dy = dy_inv * ( square(v_avg_top_2) - square(v_avg_bot_2) )
+						          + gamma* dy_inv* ( ( std::abs(v_avg_top_2) * 0.5 * ( sg.v(j,i,CENTER) - sg.v(j,i,NORTH)) )
+						        		            -( std::abs(v_avg_bot_2) * 0.5 * ( sg.v(j,i,SOUTH) - sg.v(j,i,CENTER)) ) );
+
+				real dv_sq_by_dx_sq_sym, dv_sq_by_dy_sq, dk_by_dy_term;
+				if(!turb_mode)
+				{
+					dv_sq_by_dx_sq_sym = square(dx_inv) * ( sg.v(j,i,EAST) - 2 * sg.v(j,i,CENTER) + sg.v(j,i,WEST) );
+					dv_sq_by_dy_sq = square(dy_inv) * ( sg.v(j,i,NORTH) - 2 * sg.v(j,i,CENTER) + sg.v(j,i,SOUTH) );
+					dk_by_dy_term = 0 ;
+				}
+				else
+				{
+					Re_inv = 1;
+					dv_sq_by_dy_sq = 2.0 * square(dy_inv) * ( nu_star(j,i) * (sg.v(j,i,NORTH) - sg.v(j,i,CENTER)) -
+							                                  nu_star(j,i) * (sg.v(j,i,CENTER) - sg.v(j,i,SOUTH)) );
+
+					real nu_star_E = 0.25* ( nu_star(j+1,i+1) + nu_star(j+1,i) + nu_star(j,i+1) + nu_star(j,i) );
+					real du_by_dy_E = dy_inv * ( sg.u(j,i,NORTH) - sg.u(j,i,CENTER) );
+					real dv_by_dx_E = dx_inv * ( sg.v(j,i,EAST)  - sg.v(j,i,CENTER) );
+
+					real nu_star_W = 0.25* ( nu_star(j+1,i-1) + nu_star(j+1,i) + nu_star(j,i-1) + nu_star(j,i) );
+					real du_by_dy_W = dy_inv * ( sg.u(j+1,i,WEST) - sg.u(j,i,WEST) );
+		     		real dv_by_dx_W = dx_inv * ( sg.v(j,i,CENTER) - sg.v(j,i,WEST) );
+
+		     		dv_sq_by_dx_sq_sym  = dx_inv* ( nu_star_E *(dv_by_dx_E + du_by_dy_E) - nu_star_W *(dv_by_dx_W + du_by_dy_W) );
+
+		     		dk_by_dy_term = (2.0/3.0) * dy_inv * ( sg.k_old(j,i,NORTH) - sg.k_old(j,i,CENTER) );
+				}
+
+				// computaion of f and g
+
+				(*g)(j,i) = sg.v(j,i,CENTER) + dt * ( Re_inv * (dv_sq_by_dx_sq_sym + dv_sq_by_dy_sq) - dk_by_dy_term -  duv_by_dx - dv_sq_by_dy + gy);
+			}
+
+
+		}
+}
+
+//to transform from index to real coordinate system
+//assumption: (0,0) at left bottom
+real transform_cs(int x, real dx)
+{
+	return (x-0.5) * dx;
+}
+void FluidSimulator::compute_delta()
+{
+//First checks boundaries; then checks obstacles that occur in radius less than the distance to boundary
+
+ Array<real> *delta = &sg.delta();
+
+ delta->fill_right_boundary(sg.dx()*0.5);
+ delta->fill_left_boundary(sg.dx()*0.5);
+ delta->fill_top_boundary(sg.dy()*0.5);
+ delta->fill_bottom_boundary(sg.dy()*0.5);
+
+for (int j=1; j<= sg.jmax();++j)
+		for(int i=1; i<=sg.imax(); ++i)
+		{
+		   if(sg.isFluid(j,i))
+            {
+
+               //assumption: origin is left-bottom corner
+             real x_min    =  transform_cs( (std::min(std::abs(i-0),std::abs(i-sg.imax()-1))), sg.dx() )  ;
+             real y_min    =  transform_cs( (std::min(std::abs(j-0),std::abs(j-sg.jmax()-1))), sg.dy() ) ;
+
+             real nearest_boundary;
+             int nearest_boundary_index;
+
+             if(x_min <  y_min)
+             {
+              nearest_boundary = x_min;
+              nearest_boundary_index = static_cast<int>((x_min/sg.dx()) + 0.5);
+             }
+
+             else
+             {
+            	nearest_boundary = y_min;
+            	nearest_boundary_index = static_cast<int>((y_min/sg.dy()) + 0.5);
+             }
+
+             real nearest_obstacle = nearest_boundary;
+
+
+              //find if there are obstacles within the corresponding radii
+              for(int y=-nearest_boundary_index; y<nearest_boundary_index; ++y) //bounding box definition
+            	  for(int x=-nearest_boundary_index; x<nearest_boundary_index; ++x) //bounding box definition
+            	  {
+            		int search_x = i+x ;
+            		int search_y = j+y ;
+
+            		if( (search_x>=0 && search_x<=sg.imax()+1) && (search_y>=0 && search_y<=sg.jmax()) )
+                      if(!sg.isFluid(search_y,search_x))//if obstacle
+                      {
+
+                    	 real x_minus_x_o, y_minus_y_o;
+                    	 if(x != 0)
+                       		 x_minus_x_o =  (std::abs(x) - 0.5 )* sg.dx() ;
+                         else
+                    		 x_minus_x_o = 0;
+
+                    	 if(y != 0)
+                    		 y_minus_y_o =  (std::abs(y) - 0.5 )* sg.dy() ;
+                    	 else
+                    		 y_minus_y_o = 0;
+
+                    	 real dist = sqrt( square(x_minus_x_o) + square(y_minus_y_o) );
+
+                         nearest_obstacle = std::min(nearest_obstacle, dist);
+                      }
+            	  }
+              (*delta)(j,i) = nearest_obstacle;
+            }
+      	}
+}
+
+real FluidSimulator::f_nu(int j, int i)
+{
+
+	Array<real> *delta = &sg.delta();
+
+	real R_delta, R_t, f_nu;
+
+	if(sg.e_old(j,i,CENTER) != 0)
+		R_t = (sg.k_old(j,i,CENTER)*sg.k_old(j,i,CENTER))/ (nu*sg.e_old(j,i,CENTER)) ;
+	else
+		R_t = 0;
+
+	R_delta = sqrt(sg.k_old(j,i,CENTER))*((*delta)(j,i)/nu);
+
+	if(R_t != 0)
+	    f_nu  = square((1 - exp(-0.0165*R_delta) )) * (1 + (20.5/R_t));
+	else
+		f_nu =0;
+
+	return f_nu;
+
+}
+
+real FluidSimulator::f_1(int j, int i)
+{
+
+	Array<real> *delta = &sg.delta();
+
+	real R_delta, R_t, f_nu, f_1;
+
+	R_t = (sg.k_old(j,i,CENTER)*sg.k_old(j,i,CENTER))/ (nu*sg.e_old(j,i,CENTER)) ;
+	R_delta = sqrt(sg.k_old(j,i,CENTER))*((*delta)(j,i)/nu);
+
+	f_nu  = square((1 - exp(-0.0165*R_delta) )) * (1 + (20.5/R_t));
+	f_1   = 1 + pow((0.05/f_nu),3);
+
+	return f_1;
+
+}
+
+real FluidSimulator::f_2(int j, int i)
+{
+	real  R_t, f_2;
+
+	R_t = (sg.k_old(j,i,CENTER)*sg.k_old(j,i,CENTER))/ (nu*sg.e_old(j,i,CENTER)) ;
+
+	f_2   = 1 - exp(- square(R_t));
+
+	return f_2;
+}
+
+void FluidSimulator::compute_nu_t()
+{
+	PRG_LEVEL("COMPUTE nu_t");
+	Array<real> *nu_t = &sg.nu_t();
+	for (int j=1; j<= sg.jmax();++j)
+		for(int i=1; i<=sg.imax(); ++i)
+		{
+			if(sg.e_old(j,i,CENTER) != 0)
+			{
+				(*nu_t)(j,i) = c_nu * f_nu(j,i) * square(sg.k_old(j,i,CENTER)) / sg.e_old(j,i,CENTER);
+		    }
+				else
+				(*nu_t)(j,i) = 0;
+
+
+		}
+}
+
+real FluidSimulator::nu_star(int j, int i)
+{
+	Array<real> *nu_t = &sg.nu_t();
+	return nu + (*nu_t)(j,i);
+}
+
+real FluidSimulator::nu_t(int j, int i)
+{
+	Array<real> *nu_t = &sg.nu_t();
+	return (*nu_t)(j,i);
+}
+
+void FluidSimulator::computeKE()
+{
+	PRG_LEVEL("Compute KE");
+
+	Array<real> *k_new = &sg.k_new();//pointer to new timestep buffers
+	Array<real> *e_new = &sg.e_new();
+
+	Array<real> *nu_t = &sg.nu_t();
+
+	for (int j=1; j<= sg.jmax();++j)
+		for(int i=1; i<=sg.imax(); ++i)
+		{
+           if(sg.isFluid(j,i))
+           {
+			//variables used many times
+			const real f_nu_center  = f_nu(j,i);
+			const real f_1_center   = 1 + pow((0.05/f_nu_center),3); //just an optimisation to avoid recalculation
+			const real f_2_center   = f_2(j,i);
+			const real nu_t_center = (*nu_t)(j,i);
+
+			real nu_t_east = (  (*nu_t)(j,i+1) + nu_t_center ) * 0.5;
+			real nu_t_west = (  (*nu_t)(j,i-1) + nu_t_center ) * 0.5;
+			real nu_t_north = ( (*nu_t)(j+1,i) + nu_t_center ) * 0.5;
+			real nu_t_south = ( (*nu_t)(j-1,i) + nu_t_center ) * 0.5;
+
+			real first_term_k  = (1/(sg.dx()*sg.dx())) * ( (nu_t_east * (sg.k_old(j,i,EAST) - sg.k_old(j,i,CENTER))) - (nu_t_west * (sg.k_old(j,i,CENTER) - sg.k_old(j,i,WEST))) );
+
+			real second_term_k = (1/(sg.dy()*sg.dy())) * ( (nu_t_north   * (sg.k_old(j,i,NORTH) - sg.k_old(j,i,CENTER))) - (nu_t_south * (sg.k_old(j,i,CENTER) - sg.k_old(j,i,SOUTH))) );
+
+	        real k_avg_east  = 0.5 * ( sg.k_old(j,i,CENTER) + sg.k_old(j,i,EAST));
+			real k_avg_west  = 0.5 * ( sg.k_old(j,i,CENTER) + sg.k_old(j,i,WEST));
+			real dk_by_dx_forward_factor  = 0.5 * (sg.k_old(j,i,CENTER ) - sg.k_old(j,i,EAST));
+			real dk_by_dx_backward_factor = 0.5 * (sg.k_old(j,i,WEST)    - sg.k_old(j,i,CENTER));
+			real third_term_k  = (1/sg.dx()) * ( sg.u(j,i,CENTER) * k_avg_east - sg.u(j,i,WEST) * k_avg_west ) +
+					           (gamma/sg.dx()) * ( (std::abs(sg.u(j,i,CENTER)) * dk_by_dx_forward_factor) - (std::abs(sg.u(j,i,WEST)) * dk_by_dx_backward_factor) ) ;
+
+			real k_avg_north  = 0.5 * ( sg.k_old(j,i,CENTER) + sg.k_old(j,i,NORTH));
+			real k_avg_south  = 0.5 * ( sg.k_old(j,i,CENTER) + sg.k_old(j,i,SOUTH));
+			real dk_by_dy_forward_factor  = 0.5 * (sg.k_old(j,i,CENTER ) - sg.k_old(j,i,NORTH));
+			real dk_by_dy_backward_factor = 0.5 * (sg.k_old(j,i,SOUTH)    - sg.k_old(j,i,CENTER));
+			real fourth_term_k  = (1/sg.dy()) * ( sg.v(j,i,CENTER) * k_avg_north - sg.v(j,i,SOUTH) * k_avg_south ) +
+								(gamma/sg.dy()) * ( (std::abs(sg.v(j,i,CENTER)) * dk_by_dy_forward_factor) - (std::abs(sg.v(j,i,SOUTH)) * dk_by_dy_backward_factor) ) ;
+
+			real du_by_dx = (1/sg.dx()) * ( sg.u(j,i,CENTER) - sg.u(j,i,WEST) );
+			real du_by_dy = (1/(4.0*sg.dy())) * ( (sg.u(j,i,NORTH) + sg.u(j,i-1,NORTH)) - (sg.u(j,i,SOUTH) + sg.u(j,i-1,SOUTH)) );
+			real dv_by_dy = (1/sg.dy()) * ( sg.v(j,i,CENTER) - sg.v(j,i,SOUTH) );
+            real dv_by_dx = (1/(4.0*sg.dx())) * ( (sg.v(j,i,EAST) + sg.v(j-1,i,EAST)) - (sg.v(j,i,WEST) + sg.v(j-1,i,WEST)) );
+            real sym_grad_u_sq = 4.0 * square(du_by_dx) + 2.0 * square( du_by_dy + dv_by_dx) + 4.0 * square(dv_by_dy);
+            real fifth_term_k = 0.5 * nu_t_center * sym_grad_u_sq;
+
+            (*k_new)(j,i) = sg.k_old(j,i,CENTER) + dt * ( first_term_k + second_term_k - third_term_k - fourth_term_k + fifth_term_k - sg.e_old(j,i,CENTER));
+            //std::cout<<(*k_new)(j,i)<<"\n";
+           // CHECK_MSG((*k_new)(j,i)>=0, "Turbulent Kinetic Energy(k) negative");
+
+    		real nu_t_f_nu_east = ( (*nu_t)(j,i+1) * f_nu(j,i+1) + nu_t_center * f_nu_center) * 0.5;
+    		real nu_t_f_nu_west = ( (*nu_t)(j,i-1) * f_nu(j,i-1) + nu_t_center * f_nu_center ) * 0.5;
+    		real nu_t_f_nu_north = ( (*nu_t)(j+1,i)* f_nu(j+1,i) + nu_t_center * f_nu_center) * 0.5;
+    		real nu_t_f_nu_south = ( (*nu_t)(j-1,i)* f_nu(j-1,i) + nu_t_center * f_nu_center) * 0.5;
+
+    		real first_term_e  = (c_eps/c_nu)*(1/(sg.dx()*sg.dx())) * ( (nu_t_f_nu_east  * (sg.e_old(j,i,EAST) - sg.e_old(j,i,CENTER))) - (nu_t_f_nu_west * (sg.e_old(j,i,CENTER) - sg.e_old(j,i,WEST))) );
+
+			real second_term_e = (c_eps/c_nu)*(1/(sg.dy()*sg.dy())) * ( (nu_t_f_nu_north * (sg.e_old(j,i,NORTH) - sg.e_old(j,i,CENTER))) - (nu_t_f_nu_south * (sg.e_old(j,i,CENTER) - sg.e_old(j,i,SOUTH))) );
+
+	        real e_avg_east  = 0.5 * ( sg.e_old(j,i,CENTER) + sg.e_old(j,i,EAST));
+			real e_avg_west  = 0.5 * ( sg.e_old(j,i,CENTER) + sg.e_old(j,i,WEST));
+			real de_by_dx_forward_factor  = 0.5 * (sg.e_old(j,i,CENTER ) - sg.e_old(j,i,EAST));
+			real de_by_dx_backward_factor = 0.5 * (sg.e_old(j,i,WEST)    - sg.e_old(j,i,CENTER));
+			real third_term_e  = (1/sg.dx()) * ( sg.u(j,i,CENTER) * e_avg_east - sg.u(j,i,WEST) * e_avg_west ) +
+					           (gamma/sg.dx()) * ( (std::abs(sg.u(j,i,CENTER)) * de_by_dx_forward_factor) - (std::abs(sg.u(j,i,WEST)) * de_by_dx_backward_factor) ) ;
+
+			real e_avg_north  = 0.5 * ( sg.e_old(j,i,CENTER) + sg.e_old(j,i,NORTH));
+			real e_avg_south  = 0.5 * ( sg.e_old(j,i,CENTER) + sg.e_old(j,i,SOUTH));
+			real de_by_dy_forward_factor  = 0.5 * (sg.e_old(j,i,CENTER ) - sg.e_old(j,i,NORTH));
+			real de_by_dy_backward_factor = 0.5 * (sg.e_old(j,i,SOUTH)    - sg.e_old(j,i,CENTER));
+			real fourth_term_e  = (1/sg.dy()) * ( sg.v(j,i,CENTER) * e_avg_north - sg.v(j,i,SOUTH) * e_avg_south ) +
+								(gamma/sg.dy()) * ( (std::abs(sg.v(j,i,CENTER)) * de_by_dy_forward_factor) - (std::abs(sg.v(j,i,SOUTH)) * de_by_dy_backward_factor) ) ;
+
+			real fifth_term_e = (0.5 * c_1 * f_1_center * sg.k_old(j,i,CENTER)) * sym_grad_u_sq;
+
+			real sixth_term_e = (c_2 * f_2_center * square(sg.e_old(j,i,CENTER)) )/ sg.k_old(j,i,CENTER);
+
+			(*e_new)(j,i) = sg.e_old(j,i,CENTER) + dt * ( first_term_e + second_term_e - third_term_e - fourth_term_e + fifth_term_e - sixth_term_e);
+
+           }
+		}
+//swap new and old
+
+sg.e_new().swap(sg.e_old());
+sg.k_new().swap(sg.k_old());
+
+}
+
+bool FluidSimulator::checkHirt()
+{
+  Array<real> *u = &sg.u();
+  Array<real> *v = &sg.v();
+  if( gamma>=std::max( (u->abs_max()*dt)/sg.dx(),(v->abs_max()*dt)/sg.dy()) )
+	  return true;
+  else
+	  return false;
+}
+
+void FluidSimulator::simulate ( real duration)
+{
+	simulation_time = duration;
+    simulateTimeStepCount(std::numeric_limits<unsigned int>::max());
+}
+
+void FluidSimulator::simulateTimeStepCount( unsigned int nrOfTimeSteps )
+{
+	clock_t start_time;
+	start_time = clock();
+
+	if(nrOfTimeSteps == std::numeric_limits<unsigned int>::min()) //This allows for calling with parameters from parameter file
+		nrOfTimeSteps = timesteps;
+	std::stringstream msg, msg_intermediate;
+
+	VTKWriter vtk(grid(),"test",true,true,true,true);
+    unsigned int t = 0;
+    real real_time = 0.0;
+    Array<real> *u = &sg.u();
+    Array<real> *v = &sg.v();
+    Array<real> *p = &sg.p();
+    Array<real> *k = &sg.k_old();
+    Array<real> *e = &sg.e_old();
+
+    u->fill(U_init);
+    v->fill(V_init);
+    p->fill(P_init);
+    k->fill(k_init);
+    e->fill(e_init);
+
+    makeWorld();//Sets obstacles
+
+    if(turb_mode)
+    {
+    compute_delta();
+    }
+
+    while (t<nrOfTimeSteps && real_time<simulation_time )
+    {
+    	determineNextDT();
+    	bh.refreshBoundaries(sg);
+
+       if(turb_mode) //if turbulence is enabled
+    	{
+         computeKE(); //computes k and epsilon
+         compute_nu_t(); //updates turbulent viscosities
+    	}
+
+    	computeFG(); //computes F G
+    	composeRHS();
+
+    	if(t % normalization_freq==0)
+    	 normalize_pressure();
+
+        solver.solve(sg);
+        updateVelocities();
+        if(t % write_freq == 0)
+        vtk.write();
+        ++t;
+        real_time+=dt;
+
+      }
+
+msg<<"\t TOTAL TIMESTEPS ="<<t<<"\n";
+msg<<"\t REAL TIME       ="<<real_time<<"s \n";
+msg<<"\t COMPUTE TIME    ="<<(clock()-start_time)*1.0e-6<<"s\n";
+INFO("ALL OUTPUTS are written to out folder");
+CELEBRATE(msg.str());
+}
+
+void FluidSimulator::normalize_pressure()
+{
+    Array<real> *p = &	sg.p();
+	real avg_p = p->sum();
+    avg_p /= (p->y_size*p->x_size);
+
+    for(int j=0; j<p->y_size;++j)
+    	for(int i=0; i<p->x_size;++i)
+    	{
+    		//normalizing around 0
+    		if(sg.isFluid(j,i))
+    		(*p)(j,i) = (*p)(j,i) - avg_p;
+    	}
+
+}
+
+void FluidSimulator::composeRHS()
+{
+	real dt_inv = 1.0/dt;
+	real dx_inv = 1.0/(sg.dx());
+	real dy_inv = 1.0/(sg.dy());
+
+	Array<real> *rhs = &sg.rhs();
+	Array<real> *f   = &sg.f();
+	Array<real> *g   = &sg.g();
+
+     for(int j=1; j<= sg.jmax(); ++j)
+     {
+    	 for(int i=1; i<= sg.imax(); ++i)
+    	 {
+    		 (*rhs)(j,i) = dt_inv * ( dx_inv*( (*f)(j,i) - (*f)(j,i-1) ) + dy_inv*( (*g)(j,i) - (*g)(j-1,i) ) );
+
+    	 }
+
+     }
+}
+
+void FluidSimulator::updateVelocities()
+{
+  Array<real> *u = &sg.u();
+  Array<real> *v = &sg.v();
+  Array<real> *f = &sg.f();
+  Array<real> *g = &sg.g();
+  Array<real> *p = &sg.p();
+  real dx_inv = 1.0/(sg.dx());
+  real dy_inv = 1.0/(sg.dy());
+
+  for(int j=1; j<= sg.jmax() ; ++j)
+	  for(int i=1; i< sg.imax(); ++i)
+	  {
+		 if(sg.isFluid(j,i)&&sg.isFluid(j,i+1)) //if I am on a Fluid edge
+		  (*u)(j,i) = (*f)(j,i) - (dt*dx_inv) * ( (*p)(j,i+1) - (*p)(j,i) );
+	  }
+
+  for(int j=1; j< sg.jmax(); ++j)
+	  for(int i=1; i<=sg.imax();++i)
+	  {
+		  if(sg.isFluid(j,i) && sg.isFluid(j+1,i)) //if I am on a Fluid edge
+		  (*v)(j,i) = (*g)(j,i) - (dt*dy_inv) * ( (*p)(j+1,i) - (*p)(j,i) );
+	  }
+
+
+}
+
+void FluidSimulator::determineNextDT()
+{
+  //safety factor
+	real tau = safety_factor;
+    Array<real> *u = &sg.u();
+    Array<real> *v = &sg.v();
+	if(tau > 0 && (u->abs_max()!=0) && (v->abs_max()!=0))
+	{
+		real factor_1 = (Re/2.0)* ( 1.0/( ( 1/(sg.dx()*sg.dx()) ) + ( 1/(sg.dy()*sg.dy()) ) ) );
+        real factor_2 = sg.dx()/(u->abs_max());
+        real factor_3 = sg.dy()/(v->abs_max());
+
+		dt = tau*( std::min( std::min(factor_1,factor_2), factor_3) );
+	}
+	else
+		dt = dt_safety;
+
+}
+
+void FluidSimulator::makeWorld()
+{
+ if(load_name != "not_specified")
+ {
+	 sg.load_image(load_name);
+ }
+if(!Rect_geometry.empty())
+ {
+	 CHECK_MSG((Rect_geometry.size())%4==0,"Some parameters in obstacle geometry Rectangle, MISSING");
+	 for(unsigned int i=0; i<Rect_geometry.size(); i=i+4)
+	 sg.createRectangle(Rect_geometry[i],Rect_geometry[i+1],Rect_geometry[i+2],Rect_geometry[i+3]);
+ }
+
+ if(!Circle_geometry.empty())
+ {
+	 CHECK_MSG((Circle_geometry.size())%3 == 0, "Some parameters in obstacle geometry Circle, MISSING");
+	 for(unsigned int i=0; i<Circle_geometry.size(); i=i+3)
+	 {
+	 sg.createCircle(Circle_geometry[i],Circle_geometry[i+1],Circle_geometry[i+2]);
+	 }
+ }
+
+
+ if(save_name != "not_specified")
+ {
+	 sg.save_image(save_name);
+ }
+}
+
+

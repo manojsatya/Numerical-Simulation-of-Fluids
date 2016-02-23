@@ -1,0 +1,111 @@
+#include "VTKWriter.hh"
+#include "Debug.hh"
+
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+
+template<typename T> struct RealTypeToString         {};
+template<>           struct RealTypeToString<float>  { static const char * str; };
+template<>           struct RealTypeToString<double> { static const char * str; };
+
+const char * RealTypeToString<float>::str  = "float";
+const char * RealTypeToString<double>::str = "double";
+
+
+
+VTKWriter::VTKWriter(  const StaggeredGrid & grid, const std::string & basename, bool writePressure, bool writeVelocity, bool write_k, bool write_e )
+      : grid_(grid), baseName_( basename ),
+        writeVelocity_(writeVelocity), writePressure_(writePressure), write_k_(write_k), write_e_(write_e), counter_ (0 )
+{
+   ASSERT_MSG( writePressure_ || writeVelocity_ , "VTK Writer has to write at least velocity or pressure" );
+
+   std::stringstream sstream;
+   sstream << "# vtk DataFile Version 4.0\n";
+   sstream << "Nusif VTK output\n";
+   sstream << "ASCII\n";
+   sstream << "DATASET STRUCTURED_POINTS\n";
+
+   sstream << "DIMENSIONS " << grid_.imax() << " " << grid_.jmax() << " 1\n";
+   sstream << "ORIGIN 0 0 0 \n";
+   sstream << "SPACING " << grid_.dx() << " " << grid_.dy() << " 1\n";
+   sstream << "POINT_DATA " << grid_.imax() * grid_.jmax() << " \n" << std::endl;
+
+   header_ = sstream.str();
+}
+
+void VTKWriter::write()
+{
+   std::stringstream fileName;
+   fileName<<"out/"<<baseName_ << "_" <<  std::setw(4) << std::setfill( '0') << counter_ << ".vtk";
+   std::fstream fileStream;
+   fileStream.open( fileName.str().c_str() ,std::fstream::out);
+   fileStream << header_;
+   if ( writeVelocity_ )
+   {
+      fileStream << "VECTORS velocity " << RealTypeToString<real>::str << "\n";
+
+      for ( int i = 0; i < grid_.jmax (); ++i ){
+         for ( int j = 0; j < grid_.imax (); ++j )
+         {
+				const real u = 0.5 * ( grid_.u() ( i + 1 , j  ) + grid_.u() ( i + 1, j + 1 ) );
+				const real v = 0.5 * ( grid_.v() ( i   , j + 1 ) + grid_.v() ( i + 1, j + 1 ) ) ;
+                fileStream << u << " " << v << " " << " 0\n";
+         }
+         std::cout<<"\n";
+      }
+
+      fileStream << "\n";
+
+   }
+
+   if ( writePressure_ )
+   {
+      fileStream << "SCALARS pressure " << RealTypeToString<real>::str << " 1\n";
+      fileStream << "LOOKUP_TABLE default\n";
+
+ 	  real sum = 0.0;
+    	  for(int j=1;j<grid_.p().y_size-1;++j)
+    		  for(int i=1; i<grid_.p().x_size-1;++i)
+    		  {
+    			  if(grid_.p()(j,i) != 1)
+    			  sum+=grid_.p()(j,i);
+    		  }
+
+      real avg = sum / static_cast<real> ((grid_.p().x_size * grid_.p().y_size));
+
+      for ( int i = 0; i < grid_.jmax (); ++i )
+      {
+         for ( int j = 0; j < grid_.imax (); ++j )
+         {
+        	if(grid_.p()(i+1,j+1) != 1)
+             fileStream << (grid_.p()( i+1, j+1 ) - avg )/grid_.p().max() << "\n"; //normalize to avg.
+
+            else
+            	fileStream << "0" << "\n"; //normalize to avg.
+         }
+         std::cout<<std::endl;
+      }
+   }
+
+   if ( write_k_ )
+   {
+      fileStream << "SCALARS k " << RealTypeToString<real>::str << " 1\n";
+      fileStream << "LOOKUP_TABLE default\n";
+
+      for ( int i = 0; i < grid_.jmax (); ++i )
+         for ( int j = 0; j < grid_.imax (); ++j )
+            fileStream << grid_.k_old()( i+1, j+1 ) << "\n";
+   }
+
+   if ( write_e_ )
+   {
+      fileStream << "SCALARS e " << RealTypeToString<real>::str << " 1\n";
+      fileStream << "LOOKUP_TABLE default\n";
+
+      for ( int i = 0; i < grid_.jmax (); ++i )
+         for ( int j = 0; j < grid_.imax (); ++j )
+            fileStream << grid_.e_old()( i+1, j+1 ) << "\n";
+   }
+   ++counter_;
+}
